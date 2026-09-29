@@ -315,8 +315,13 @@ public class MainActivity extends Activity {
             list.add(stream);
         }
         list.sort((a,b)->{
-            if("Smallest".equals(sourceSort))return Long.compare(sizeSortValue(a),sizeSortValue(b));
-            if("Largest".equals(sourceSort))return Long.compare(sizeSortValue(b),sizeSortValue(a));
+            long sa=Protocol.sourceSize(a),sb=Protocol.sourceSize(b);
+            if("Smallest".equals(sourceSort)){
+                if(sa<=0&&sb<=0)return 0;if(sa<=0)return 1;if(sb<=0)return -1;return Long.compare(sa,sb);
+            }
+            if("Largest".equals(sourceSort)){
+                if(sa<=0&&sb<=0)return 0;if(sa<=0)return 1;if(sb<=0)return -1;return Long.compare(sb,sa);
+            }
             return Integer.compare(Protocol.sourceHealthRank(b),Protocol.sourceHealthRank(a));
         });
         TextView count=text(list.size()+" of "+currentStreams.size()+" sources",12,MUTED);count.setPadding(0,dp(12),0,dp(8));sourceArea.addView(count);
@@ -324,7 +329,6 @@ public class MainActivity extends Activity {
         for(JSONObject stream:list)sourceCard(sourceArea,stream,type,displayTitle);
     }
 
-    private long sizeSortValue(JSONObject stream){long n=Protocol.sourceSize(stream);return n<=0?Long.MAX_VALUE:n;}
     private boolean sourceSizeMatches(JSONObject stream){
         if("All".equals(sourceSize))return true;long n=Protocol.sourceSize(stream);if(n<=0)return false;
         long gb=1073741824L;
