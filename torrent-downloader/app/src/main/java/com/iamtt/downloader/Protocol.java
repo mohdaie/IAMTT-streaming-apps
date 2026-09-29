@@ -158,10 +158,10 @@ public final class Protocol {
     }
 
     public static int sourceHealthRank(JSONObject stream) {
-        int availability=sourceAvailability(stream);
-        if(availability>=0) return availability*100000;
         int seeds=reportedSeeders(stream);
-        return seeds<0?1:seeds;
+        if(seeds>=0) return seeds*10+Math.max(0,sourceAvailability(stream));
+        int availability=sourceAvailability(stream);
+        return availability>=0?availability:0;
     }
 
     public static String sourceHealth(JSONObject stream) {
