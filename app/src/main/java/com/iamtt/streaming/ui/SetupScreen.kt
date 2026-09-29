@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -114,7 +115,9 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(IamttBackground),
+            .background(IamttBackground)
+            // Phones on Android 15 draw apps behind the status bar; keep text clear of it.
+            .safeDrawingPadding(),
     ) {
         // A phone held sideways is much shorter than a TV screen, so shrink the QR code to fit.
         val compact = maxHeight < 480.dp

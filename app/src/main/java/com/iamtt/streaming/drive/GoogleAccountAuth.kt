@@ -84,6 +84,8 @@ class GoogleAccountAuth(
 
     companion object {
         const val ACCOUNT_TYPE = "com.google"
+        const val CANCELLED = "Sign-in was cancelled. If you didn't cancel it, finish the Google Cloud " +
+            "setup in the setup guide (step 1): the Android OAuth client, and your account as a test user."
         private val SCOPES = listOf(Scope(ServiceAccountAuth.DRIVE_READONLY_SCOPE))
 
         /** Play services tokens last an hour; re-asking it every few minutes is cheap and never stale. */
@@ -99,16 +101,20 @@ class GoogleAccountAuth(
             val cause = (e as? ExecutionException)?.cause ?: e
             if (cause is TimeoutException) return DriveException("Google Play services didn't answer in time. Try again.")
             val api = cause as? ApiException ?: return cause as? Exception ?: Exception(cause)
-            return DriveException(
-                when (api.statusCode) {
-                    CommonStatusCodes.DEVELOPER_ERROR ->
-                        "Google sign-in isn't set up for this app yet. Create the Android OAuth client " +
-                            "in Google Cloud (see the setup guide), wait a few minutes, then try again."
-                    CommonStatusCodes.NETWORK_ERROR -> "Couldn't reach Google. Check the TV's internet connection."
-                    CommonStatusCodes.CANCELED -> "Sign-in was cancelled."
-                    else -> "Google sign-in failed (${CommonStatusCodes.getStatusCodeString(api.statusCode)})."
-                }
-            )
+            // Google's own wording (e.g. "[28444] Developer console is not set up correctly") pins down setup problems.
+            val google = listOfNotNull(
+                "Google code ${api.statusCode}",
+                api.status.statusMessage?.takeIf { it.isNotBlank() },
+            ).joinToString(": ")
+            val advice = when (api.statusCode) {
+                CommonStatusCodes.DEVELOPER_ERROR ->
+                    "Google sign-in isn't set up for this app yet. Create the Android OAuth client " +
+                        "in Google Cloud (see the setup guide), wait a few minutes, then try again."
+                CommonStatusCodes.NETWORK_ERROR -> "Couldn't reach Google. Check the internet connection."
+                CommonStatusCodes.CANCELED -> CANCELLED
+                else -> "Google sign-in failed (${CommonStatusCodes.getStatusCodeString(api.statusCode)})."
+            }
+            return DriveException("$advice ($google)")
         }
     }
 }
