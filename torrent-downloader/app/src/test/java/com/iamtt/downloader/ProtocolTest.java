@@ -1,0 +1,57 @@
+package com.iamtt.downloader;
+import org.junit.Test;
+import static org.junit.Assert.*;
+import org.json.*;
+import java.io.*;
+
+public class ProtocolTest {
+    @Test public void preservesConfiguredAddonPath() {
+        assertEquals("https://example.org/quality=1080p%7Ckey=abc",Protocol.base("stremio://example.org/quality=1080p%7Ckey=abc/manifest.json"));
+    }
+    @Test public void encodesSearchAndIdsAsOneSegment() {
+        assertEquals("A%20%26%20B%2FC",Protocol.encode("A & B/C"));
+        assertEquals("tt123%3A1%3A2",Protocol.encode("tt123:1:2"));
+    }
+    @Test public void rejectsWebPageAndCredentials() {
+        for(String url:new String[]{"https://example.org/configure","http://example.org/manifest.json","https://user:pass@example.org/manifest.json","file:///manifest.json"}) {
+            assertThrows(IllegalArgumentException.class,()->Protocol.manifestUrl(url));
+        }
+    }
+    @Test public void checksTypesAndIdPrefixes() throws Exception {
+        JSONObject m=new JSONObject("{\"types\":[\"movie\"],\"resources\":[{\"name\":\"stream\",\"types\":[\"movie\"],\"idPrefixes\":[\"tt\"]}]}");
+        assertTrue(Protocol.resource(m,"stream","movie","tt123"));
+        assertFalse(Protocol.resource(m,"stream","movie","other123"));
+        assertFalse(Protocol.resource(m,"stream","series","tt123"));
+    }
+    @Test public void understandsBothSearchDeclarations() throws Exception {
+        assertTrue(Protocol.searchable(new JSONObject("{\"extra\":[{\"name\":\"search\"}]}")));
+        assertTrue(Protocol.searchable(new JSONObject("{\"extraSupported\":[\"search\"]}")));
+        assertFalse(Protocol.browsable(new JSONObject("{\"extra\":[{\"name\":\"search\",\"isRequired\":true}]}")));
+    }
+    @Test public void selectsRequestedFileNotEntirePack() {
+        assertEquals(0,Protocol.selectFile(0,new String[]{"movie.mp4","bigger.mkv"},new long[]{10,100}));
+        assertThrows(IllegalArgumentException.class,()->Protocol.selectFile(4,new String[]{"movie.mp4"},new long[]{10}));
+    }
+    @Test public void choosesLargestVideoNotArchive() {
+        assertEquals(1,Protocol.selectFile(-1,new String[]{"sample.mp4","film.MKV","extras.zip"},new long[]{10,100,1000}));
+        assertThrows(IllegalArgumentException.class,()->Protocol.selectFile(-1,new String[]{"payload.exe"},new long[]{10}));
+    }
+    @Test public void treatsNullFileIndexAsUnspecified() throws Exception {
+        assertEquals(-1,Protocol.fileIndex(new JSONObject("{\"fileIdx\":null}")));
+        assertEquals(0,Protocol.fileIndex(new JSONObject("{\"fileIdx\":0}")));
+        assertThrows(IllegalArgumentException.class,()->Protocol.fileIndex(new JSONObject("{\"fileIdx\":-1}")));
+    }
+    @Test public void buildsMagnetWithTrackerHints() throws Exception {
+        JSONObject stream=new JSONObject().put("infoHash","0123456789012345678901234567890123456789")
+            .put("sources",new JSONArray().put("tracker:udp://tracker.example:80/announce").put("dht:unused"));
+        String magnet=Protocol.magnet(stream,"My film");
+        assertTrue(magnet.contains("&dn=My%20film"));assertTrue(magnet.contains("&tr=udp%3A%2F%2Ftracker.example%3A80%2Fannounce"));
+        assertFalse(magnet.contains("dht:"));
+    }
+    @Test public void preventsPathTraversal() throws Exception {
+        File root=new File(System.getProperty("java.io.tmpdir"),"iamtt-test");
+        assertEquals(new File(root,"movie/video.mp4").getCanonicalFile(),Protocol.safeFile(root,"movie/video.mp4"));
+        assertThrows(IOException.class,()->Protocol.safeFile(root,"../../outside"));
+        assertThrows(IOException.class,()->Protocol.safeFile(root,"/outside"));
+    }
+}
