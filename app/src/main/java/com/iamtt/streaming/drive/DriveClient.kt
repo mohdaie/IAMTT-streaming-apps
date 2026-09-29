@@ -139,7 +139,7 @@ class DriveClient(auth: ServiceAccountAuth, base: OkHttpClient) {
         }
 
         walk(folder.id, "", 0)
-        found.sortedWith(compareBy({ it.path.lowercase() }, { it.name.lowercase() }))
+        found.sortedWith(compareBy<VideoFile>({ it.path.lowercase() }, { it.name.lowercase() }))
     }
 
     private fun listAll(query: String, orderBy: String): List<DriveFile> {
