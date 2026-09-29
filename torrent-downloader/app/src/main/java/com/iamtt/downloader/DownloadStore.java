@@ -9,8 +9,9 @@ public final class DownloadStore {
         public final String id, hash, title, magnet;
         public final int requested;
         public volatile String state, detail, path = "";
-        public volatile long done, total, speed;
-        public volatile int peers;
+        public volatile long done, total, expectedTotal, speed;
+        public volatile int peers, reportedSeeds=-1;
+        public volatile String sourcePublisher="", quality="", codec="";
 
         Item(String hash, String title, String magnet, int requested, String state) {
             this.hash=hash; this.title=title; this.magnet=magnet; this.requested=requested;
@@ -36,6 +37,8 @@ public final class DownloadStore {
                 Item item=new Item(j.getString("hash"),j.getString("title"),j.getString("magnet"),j.getInt("requested"),
                     "Complete".equals(j.optString("state")) ? "Complete" : "Paused");
                 item.path=j.optString("path"); item.done=j.optLong("done"); item.total=j.optLong("total");
+                item.expectedTotal=j.optLong("expectedTotal"); item.reportedSeeds=j.optInt("reportedSeeds",-1);
+                item.sourcePublisher=j.optString("sourcePublisher"); item.quality=j.optString("quality"); item.codec=j.optString("codec");
                 items.put(item.id,item);
             }
         } catch (JSONException ignored) { /* Invalid stored jobs are never auto-started. */ }
@@ -50,6 +53,11 @@ public final class DownloadStore {
         String id=hash+":"+requested;
         if (items.containsKey(id)) throw new IllegalArgumentException("This file is already in Downloads.");
         Item item=new Item(hash,title,magnet,requested,"Queued");
+        item.expectedTotal=Protocol.sourceSize(stream);
+        item.reportedSeeds=Protocol.reportedSeeders(stream);
+        item.sourcePublisher=Protocol.sourcePublisher(stream);
+        item.quality=Protocol.sourceQuality(stream);
+        item.codec=Protocol.sourceCodec(stream);
         items.put(item.id,item); save(); return item;
     }
 
@@ -57,7 +65,9 @@ public final class DownloadStore {
         JSONArray a=new JSONArray();
         for(Item i:items.values()) try {
             a.put(new JSONObject().put("hash",i.hash).put("title",i.title).put("magnet",i.magnet)
-                .put("requested",i.requested).put("state",i.state).put("path",i.path).put("done",i.done).put("total",i.total));
+                .put("requested",i.requested).put("state",i.state).put("path",i.path).put("done",i.done).put("total",i.total)
+                .put("expectedTotal",i.expectedTotal).put("reportedSeeds",i.reportedSeeds)
+                .put("sourcePublisher",i.sourcePublisher).put("quality",i.quality).put("codec",i.codec));
         } catch(JSONException ignored) { }
         prefs.edit().putString("items",a.toString()).apply();
     }
