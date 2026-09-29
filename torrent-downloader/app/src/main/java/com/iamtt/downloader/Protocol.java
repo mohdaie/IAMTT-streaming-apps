@@ -88,6 +88,96 @@ public final class Protocol {
         }
         return result.toString();
     }
+    public static String sourceText(JSONObject stream) {
+        StringBuilder b=new StringBuilder();
+        for(String key:new String[]{"name","title","description","publisher"}) {
+            String value=stream.optString(key,"");
+            if(!value.isEmpty()) b.append(value).append("\n");
+        }
+        JSONObject hints=stream.optJSONObject("behaviorHints");
+        if(hints!=null) b.append(hints.optString("filename",""));
+        return b.toString();
+    }
+
+    public static long sourceSize(JSONObject stream) {
+        JSONObject hints=stream.optJSONObject("behaviorHints");
+        if(hints!=null) {
+            Object value=hints.opt("videoSize");
+            if(value instanceof Number && ((Number)value).longValue()>0) return ((Number)value).longValue();
+        }
+        for(String key:new String[]{"videoSize","size"}) {
+            Object value=stream.opt(key);
+            if(value instanceof Number && ((Number)value).longValue()>0) return ((Number)value).longValue();
+        }
+        Matcher m=Pattern.compile("(?i)(\\d+(?:\\.\\d+)?)\\s*(KB|MB|GB|TB)").matcher(sourceText(stream));
+        if(!m.find()) return 0;
+        double n=Double.parseDouble(m.group(1));String unit=m.group(2).toUpperCase(Locale.ROOT);
+        long scale=unit.equals("TB")?1099511627776L:unit.equals("GB")?1073741824L:unit.equals("MB")?1048576L:1024L;
+        return (long)(n*scale);
+    }
+
+    public static int reportedSeeders(JSONObject stream) {
+        for(String key:new String[]{"seeders","seeds"}) {
+            Object value=stream.opt(key);
+            if(value instanceof Number) return Math.max(0,((Number)value).intValue());
+        }
+        Matcher m=Pattern.compile("(?i)(?:👤|seeders?|seeds?)\\s*[:=]?\\s*(\\d+)").matcher(sourceText(stream));
+        return m.find()?Integer.parseInt(m.group(1)):-1;
+    }
+
+    public static String sourcePublisher(JSONObject stream) {
+        String direct=stream.optString("publisher","").trim();
+        if(!direct.isEmpty()) return direct;
+        Matcher m=Pattern.compile("⚙️\\s*([^\\n\\r]+)").matcher(sourceText(stream));
+        if(m.find()) return m.group(1).trim();
+        return "Unknown";
+    }
+
+    public static String sourceQuality(JSONObject stream) {
+        String t=sourceText(stream).toLowerCase(Locale.ROOT);
+        if(t.contains("2160p")||t.matches("(?s).*\\b4k\\b.*")) return "4K";
+        if(t.contains("1080p")) return "1080p";
+        if(t.contains("720p")) return "720p";
+        if(t.contains("480p")) return "480p";
+        if(t.contains("cam")||t.contains("telesync")||t.matches("(?s).*\\bts\\b.*")) return "CAM/TS";
+        return "Other";
+    }
+
+    public static String sourceCodec(JSONObject stream) {
+        String t=sourceText(stream).toLowerCase(Locale.ROOT);
+        if(t.contains("x265")||t.contains("h265")||t.contains("hevc")) return "HEVC";
+        if(t.contains("av1")) return "AV1";
+        if(t.contains("x264")||t.contains("h264")||t.contains("avc")) return "H.264";
+        return "";
+    }
+
+    public static int sourceAvailability(JSONObject stream) {
+        Object value=stream.opt("availability");
+        if(value instanceof Number) return Math.max(0,Math.min(3,((Number)value).intValue()));
+        return -1;
+    }
+
+    public static int sourceHealthRank(JSONObject stream) {
+        int availability=sourceAvailability(stream);
+        if(availability>=0) return availability*100000;
+        int seeds=reportedSeeders(stream);
+        return seeds<0?1:seeds;
+    }
+
+    public static String sourceHealth(JSONObject stream) {
+        int availability=sourceAvailability(stream);
+        if(availability==3) return "Strong";
+        if(availability==2) return "Good";
+        if(availability==1) return "Weak";
+        if(availability==0) return "No availability";
+        int seeds=reportedSeeders(stream);
+        if(seeds<0) return "Unknown";
+        if(seeds>=20) return "Strong";
+        if(seeds>=5) return "Good";
+        if(seeds>=1) return "Weak";
+        return "No reported seeders";
+    }
+
     public static int year(JSONObject media) {
         Object raw = media.opt("year");
         if (raw instanceof Number) return ((Number) raw).intValue();
