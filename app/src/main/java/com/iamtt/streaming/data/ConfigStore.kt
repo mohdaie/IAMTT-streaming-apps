@@ -39,7 +39,12 @@ class ConfigStore(context: Context) {
     }
 
     fun setKey(json: String, email: String) = update {
-        it.copy(serviceAccountJson = json, serviceAccountEmail = email)
+        it.copy(serviceAccountJson = json, serviceAccountEmail = email, googleAccount = null)
+    }
+
+    /** Switches Drive access to [email]'s Google account and forgets any service account key. */
+    fun setGoogleAccount(email: String) = update {
+        it.copy(googleAccount = email, serviceAccountJson = null, serviceAccountEmail = null)
     }
 
     fun addFolder(folder: LibraryFolder) = update { cfg ->

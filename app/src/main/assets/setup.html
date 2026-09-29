@@ -34,12 +34,17 @@
   .msg.ok { display:block; background:#12301f; color:#9be7bd; }
   .hidden { display:none !important; }
   ol { padding-left:20px; margin:6px 0; } ol li { display:list-item; border:0; padding:3px 0; }
+  details { margin-top:12px; } summary { cursor:pointer; color:var(--muted); font-size:14px; }
+  .tabs { display:flex; gap:8px; margin:4px 0 8px; } .tabs button.on { background:#3a3a44; font-weight:600; }
+  .crumbs { font-size:14px; color:var(--muted); margin:6px 0 2px; word-break:break-word; }
+  .crumbs a { color:var(--text); cursor:pointer; text-decoration:underline; }
+  button.open { background:none; padding:6px 0; text-align:left; font-weight:600; flex:1 1 150px; word-break:break-word; }
 </style>
 </head>
 <body>
 <main>
   <h1><b>IAMTT</b> setup</h1>
-  <p class="sub">Connect the TV app to the Google Drive folders you want to watch. Only the folders you add here are ever scanned.</p>
+  <p class="sub">Choose the Google Drive folders you want to watch on the TV. Only the folders you add here are ever scanned.</p>
 
   <section id="pinBox" class="hidden">
     <h2>Enter the PIN shown on the TV</h2>
@@ -49,28 +54,44 @@
 
   <div id="app" class="hidden">
     <section id="s1">
-      <h2><span class="num">1</span>Service account key</h2>
-      <div id="keyMissing">
-        <p class="muted">Upload the JSON key file you downloaded from Google Cloud. It is stored only on the TV.</p>
-        <div class="row"><input type="file" id="keyFile" accept=".json,application/json"><button class="primary" id="keyBtn" onclick="uploadKey()">Upload</button></div>
+      <h2><span class="num">1</span>Connect Google Drive</h2>
+      <div id="modeNone">
+        <p>On the TV, press <b>Sign in with Google</b> and choose the account that has your movies.</p>
+        <p class="muted">This page updates by itself once you're signed in.</p>
       </div>
-      <div id="keyPresent" class="hidden">
-        <p>The app's Google address is:</p>
+      <div id="modeGoogle" class="hidden">
+        <p>Signed in on the TV as:</p>
+        <div class="email" id="account"></div>
+        <p class="muted">To use a different account, press <b>Switch account</b> on the TV.</p>
+      </div>
+      <div id="modeKey" class="hidden">
+        <p>Using a service account. Its Google address is:</p>
         <div class="email" id="email"></div>
-        <div class="row"><button onclick="copyEmail()">Copy address</button><button onclick="replaceKey()">Replace key</button></div>
+        <div class="row"><button onclick="copyEmail()">Copy address</button></div>
       </div>
+      <details id="keyBox">
+        <summary id="keySummary">Advanced: use a service account key instead</summary>
+        <p class="muted">For a robot account that can only see folders you share with it. Upload the JSON key file from Google Cloud; it is stored only on the TV. See the setup guide.</p>
+        <div class="row"><input type="file" id="keyFile" accept=".json,application/json"><button class="primary" id="keyBtn" onclick="uploadKey()">Upload</button></div>
+      </details>
       <div id="keyMsg" class="msg"></div>
     </section>
 
     <section id="s2">
-      <h2><span class="num">2</span>Share your folders with that address</h2>
-      <ol class="muted">
+      <h2><span class="num">2</span>Choose your folders</h2>
+      <ol class="muted" id="shareHelp">
         <li>Open Google Drive and right-click your Movies (or TV Shows) folder.</li>
         <li>Share → paste the address above → set to <b>Viewer</b> → Send (untick "Notify").</li>
-        <li>Come back and tap <b>Find shared folders</b>.</li>
+        <li>Come back and tap <b>Refresh</b>.</li>
       </ol>
-      <div class="row"><button class="primary" id="findBtn" onclick="findShared()">Find shared folders</button></div>
-      <ul id="shared"></ul>
+      <div class="tabs" id="tabs">
+        <button id="tabMine" onclick="browseFrom('root')">My Drive</button>
+        <button id="tabShared" onclick="browseFrom('shared')">Shared with me</button>
+      </div>
+      <p class="muted">Tap a folder to look inside it, or add it as Movies or TV Shows.</p>
+      <div class="crumbs" id="crumbs"></div>
+      <ul id="browser"></ul>
+      <div class="row"><button id="refreshBtn" onclick="loadFolders()">Refresh</button></div>
       <p class="muted" style="margin-top:14px">Or paste a folder link:</p>
       <div class="row"><input id="link" placeholder="https://drive.google.com/drive/folders/…"></div>
       <div class="row">
@@ -118,16 +139,34 @@ async function start() {
   }
 }
 
+let mode = null;
+let drawnFolders = '';
+
 function render() {
   const s = state;
-  $('keyMissing').classList.toggle('hidden', s.hasKey);
-  $('keyPresent').classList.toggle('hidden', !s.hasKey);
+  const connected = s.mode !== 'none';
+  $('modeNone').classList.toggle('hidden', connected);
+  $('modeGoogle').classList.toggle('hidden', s.mode !== 'google');
+  $('modeKey').classList.toggle('hidden', s.mode !== 'serviceAccount');
+  $('account').textContent = s.account || '';
   $('email').textContent = s.email || '';
-  $('s1').classList.toggle('done', s.hasKey);
+  $('keySummary').textContent = s.mode === 'serviceAccount' ? 'Replace the service account key'
+    : 'Advanced: use a service account key instead';
+  $('shareHelp').classList.toggle('hidden', s.mode !== 'serviceAccount');
+  $('tabs').classList.toggle('hidden', s.mode !== 'google');
+  $('s1').classList.toggle('done', connected);
   $('s2').classList.toggle('done', s.folders.length > 0);
   $('s3').classList.toggle('done', s.folders.length > 0 && !s.scanning);
-  $('s2').style.opacity = s.hasKey ? 1 : .5;
-  $('findBtn').disabled = !s.hasKey;
+  $('s2').style.opacity = connected ? 1 : .5;
+  $('refreshBtn').disabled = !connected;
+  if (s.mode !== mode) {
+    // Just connected (or switched method): start browsing where that account's folders are.
+    mode = s.mode;
+    crumbs = [];
+    if (connected) browseFrom(mode === 'google' ? 'root' : 'shared'); else renderFolders();
+  } else if (drawnFolders !== folderKey()) {
+    renderFolders(); // only when "Added as" tags change, so a tap isn't lost to a redraw
+  }
   const lib = $('library');
   if (!s.folders.length) {
     lib.innerHTML = '<li class="muted">No folders yet.</li>';
@@ -151,11 +190,11 @@ async function uploadKey() {
     const text = await f.text();
     state = await api('/api/key', { method: 'POST', body: text });
     show($('keyMsg'), 'Key saved. Now share your folders with the address above.', 'ok');
+    $('keyBox').open = false;
     render();
   } catch (e) { show($('keyMsg'), e.message, 'err'); }
   $('keyBtn').disabled = false;
 }
-function replaceKey() { $('keyMissing').classList.remove('hidden'); $('keyPresent').classList.add('hidden'); }
 async function copyEmail() {
   try { await navigator.clipboard.writeText(state.email); show($('keyMsg'), 'Copied.', 'ok'); }
   catch (e) {
@@ -165,28 +204,54 @@ async function copyEmail() {
   }
 }
 
-async function findShared() {
-  clear($('folderMsg')); $('findBtn').disabled = true;
+// Folder browser. crumbs[0] is where browsing started: 'root' (My Drive) or 'shared'.
+let crumbs = [];
+let listing = null; // folders in the current crumb, or null while loading
+const TOP = { root: 'My Drive', shared: 'Shared with me' };
+
+function browseFrom(top) { crumbs = [{ id: top, name: TOP[top] }]; loadFolders(); }
+function crumbTo(i) { crumbs = crumbs.slice(0, i + 1); loadFolders(); }
+function openAt(i) { const f = listing[i]; crumbs.push({ id: f.id, name: f.name }); loadFolders(); }
+
+async function loadFolders() {
+  if (!crumbs.length) return;
+  clear($('folderMsg')); listing = null; renderFolders();
+  const here = crumbs[crumbs.length - 1];
   try {
-    const { folders } = await api('/api/shared');
-    const ul = $('shared');
-    if (!folders.length) {
-      ul.innerHTML = '';
+    const { folders } = await api(here.id === 'shared' ? '/api/shared' : '/api/browse?parent=' + encodeURIComponent(here.id));
+    listing = folders;
+    if (!folders.length && here.id === 'shared' && state.mode === 'serviceAccount') {
       show($('folderMsg'), 'No shared folders found yet. Sharing can take a minute to show up — try again shortly.', 'err');
-    } else {
-      ul.innerHTML = folders.map(f => `
-        <li><span class="name">${esc(f.name)}</span>
-        ${f.type ? `<span class="tag ${f.type === 'TV_SHOWS' ? 'tv' : 'movies'}">Added as ${typeLabel(f.type)}</span>` :
-          `<span class="row" style="margin:0"><button onclick="addId('${esc(f.id)}','MOVIES')">+ Movies</button><button onclick="addId('${esc(f.id)}','TV_SHOWS')">+ TV Shows</button></span>`}
-        </li>`).join('');
     }
-  } catch (e) { show($('folderMsg'), e.message, 'err'); }
-  $('findBtn').disabled = !state.hasKey;
+  } catch (e) { listing = []; show($('folderMsg'), e.message, 'err'); }
+  renderFolders();
 }
-async function addId(id, type) {
+
+function folderKey() { return state.folders.map(f => f.id + ':' + f.type).join(','); }
+
+function renderFolders() {
+  drawnFolders = folderKey();
+  $('tabMine').classList.toggle('on', crumbs.length > 0 && crumbs[0].id === 'root');
+  $('tabShared').classList.toggle('on', crumbs.length > 0 && crumbs[0].id === 'shared');
+  $('crumbs').innerHTML = crumbs.length > 1 ? crumbs.map((c, i) =>
+    i === crumbs.length - 1 ? `<b>${esc(c.name)}</b>` : `<a onclick="crumbTo(${i})">${esc(c.name)}</a>`).join(' › ') : '';
+  const ul = $('browser');
+  if (!crumbs.length) { ul.innerHTML = ''; return; }
+  if (listing === null) { ul.innerHTML = '<li class="muted">Loading…</li>'; return; }
+  if (!listing.length) { ul.innerHTML = '<li class="muted">No folders here.</li>'; return; }
+  ul.innerHTML = listing.map((f, i) => {
+    const added = state.folders.find(x => x.id === f.id);
+    return `<li><button class="open" onclick="openAt(${i})">📁 ${esc(f.name)}</button>
+      ${added ? `<span class="tag ${added.type === 'TV_SHOWS' ? 'tv' : 'movies'}">Added as ${typeLabel(added.type)}</span>` :
+        `<span class="row" style="margin:0"><button onclick="addAt(${i},'MOVIES')">+ Movies</button><button onclick="addAt(${i},'TV_SHOWS')">+ TV Shows</button></span>`}
+      </li>`;
+  }).join('');
+}
+
+async function addAt(i, type) {
   try {
-    state = await api('/api/folders', { method: 'POST', body: JSON.stringify({ input: id, type }) });
-    render(); findShared();
+    state = await api('/api/folders', { method: 'POST', body: JSON.stringify({ input: listing[i].id, type }) });
+    render();
     show($('folderMsg'), 'Added. Scanning has started.', 'ok');
   } catch (e) { show($('folderMsg'), e.message, 'err'); }
 }

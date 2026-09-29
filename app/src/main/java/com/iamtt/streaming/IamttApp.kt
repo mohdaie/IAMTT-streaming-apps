@@ -3,7 +3,9 @@ package com.iamtt.streaming
 import android.app.Application
 import com.iamtt.streaming.data.ConfigStore
 import com.iamtt.streaming.data.LibraryRepository
+import com.iamtt.streaming.drive.DriveAuth
 import com.iamtt.streaming.drive.DriveClient
+import com.iamtt.streaming.drive.GoogleAccountAuth
 import com.iamtt.streaming.drive.ServiceAccountAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +17,7 @@ import java.util.concurrent.TimeUnit
 class IamttApp : Application() {
     lateinit var config: ConfigStore
         private set
-    lateinit var auth: ServiceAccountAuth
+    lateinit var auth: DriveAuth
         private set
     lateinit var drive: DriveClient
         private set
@@ -31,7 +33,11 @@ class IamttApp : Application() {
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
         config = ConfigStore(this)
-        auth = ServiceAccountAuth(keyProvider = { config.current.serviceAccountJson }, http = baseHttp)
+        auth = DriveAuth(
+            config = config,
+            serviceAccount = ServiceAccountAuth(keyProvider = { config.current.serviceAccountJson }, http = baseHttp),
+            google = GoogleAccountAuth(this, accountProvider = { config.current.googleAccount }),
+        )
         drive = DriveClient(auth, baseHttp)
         library = LibraryRepository(this, drive, config, appScope)
     }

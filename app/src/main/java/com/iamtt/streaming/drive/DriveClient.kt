@@ -42,6 +42,12 @@ data class VideoMeta(val durationMillis: Long? = null, val width: Int? = null, v
 data class ShortcutDetails(val targetId: String? = null, val targetMimeType: String? = null)
 
 @Serializable
+data class DriveUser(val displayName: String? = null, val emailAddress: String? = null)
+
+@Serializable
+private data class About(val user: DriveUser? = null)
+
+@Serializable
 private data class FileList(val files: List<DriveFile> = emptyList(), val nextPageToken: String? = null)
 
 const val FOLDER_MIME = "application/vnd.google-apps.folder"
@@ -67,11 +73,14 @@ fun parseFolderId(input: String): String? {
     return null
 }
 
+/** Drive IDs are URL-safe base64-ish; checking the shape keeps them from breaking out of a query. */
+private val DRIVE_ID = Regex("^[A-Za-z0-9_-]{10,}$")
+
 /**
  * Minimal Google Drive v3 client. Every call is read-only, and scanning is limited to
  * the folders passed in — nothing outside them is ever listed.
  */
-class DriveClient(auth: ServiceAccountAuth, base: OkHttpClient) {
+class DriveClient(private val auth: DriveAuth, private val base: OkHttpClient) {
 
     /** Adds the access token to googleapis.com requests and retries once on 401. Also used by the player. */
     val http: OkHttpClient = base.newBuilder()
@@ -97,9 +106,40 @@ class DriveClient(auth: ServiceAccountAuth, base: OkHttpClient) {
         file
     }
 
-    /** Folders someone shared with the service account — i.e. the ones the app is allowed to see. */
+    /**
+     * Folders shared with the connected account. For a service account these are the only
+     * folders it can see at all.
+     */
     suspend fun sharedFolders(): List<DriveFile> = withContext(Dispatchers.IO) {
         listAll("sharedWithMe = true and mimeType = '$FOLDER_MIME' and trashed = false", "name")
+    }
+
+    /**
+     * Sub-folders of [parentId] ("root" is My Drive), with shortcuts to folders resolved to
+     * their targets. Only used by the setup page's folder picker, one level at a time.
+     */
+    suspend fun childFolders(parentId: String): List<DriveFile> = withContext(Dispatchers.IO) {
+        require(parentId == "root" || DRIVE_ID.matches(parentId)) { "That isn't a Drive folder ID." }
+        listAll(
+            "'$parentId' in parents and trashed = false and " +
+                "(mimeType = '$FOLDER_MIME' or mimeType = '$SHORTCUT_MIME')",
+            "name",
+        ).mapNotNull { f ->
+            val target = f.shortcutDetails?.targetId
+            when {
+                f.isFolder -> f
+                f.shortcutDetails?.targetMimeType == FOLDER_MIME && target != null -> f.copy(id = target, mimeType = FOLDER_MIME)
+                else -> null
+            }
+        }
+    }
+
+    /** Checks a freshly granted [token] works with Drive and says whose Drive it opens. */
+    suspend fun whoAmI(token: String): DriveUser = withContext(Dispatchers.IO) {
+        val url = "$API/about".toHttpUrl().newBuilder()
+            .addQueryParameter("fields", "user(displayName,emailAddress)")
+            .build()
+        get(url, About.serializer(), token).user ?: DriveUser()
     }
 
     /** Recursively lists every video under [folder] (and only under it). */
@@ -166,8 +206,12 @@ class DriveClient(auth: ServiceAccountAuth, base: OkHttpClient) {
         return out
     }
 
-    private fun <T> get(url: HttpUrl, serializer: kotlinx.serialization.KSerializer<T>): T {
-        http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+    /** With an explicit [token], the request skips the configured account (and its 401 retry). */
+    private fun <T> get(url: HttpUrl, serializer: kotlinx.serialization.KSerializer<T>, token: String? = null): T {
+        val request = Request.Builder().url(url)
+            .apply { if (token != null) header("Authorization", "Bearer $token") }
+            .build()
+        (if (token != null) base else http).newCall(request).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) throw DriveException(explain(resp.code, body), resp.code)
             return AppJson.decodeFromString(serializer, body)
@@ -175,15 +219,17 @@ class DriveClient(auth: ServiceAccountAuth, base: OkHttpClient) {
     }
 
     private fun explain(code: Int, body: String): String = when (code) {
-        404 -> "Folder not found. Share it with the app's email address (as Viewer) first."
+        404 -> if (auth.usesServiceAccount) "Folder not found. Share it with the app's email address (as Viewer) first."
+        else "Folder not found, or the signed-in Google account can't open it."
         403 -> if ("accessNotConfigured" in body || "has not been used" in body)
             "Google Drive API isn't turned on for your Google Cloud project yet."
         else "Google Drive refused access (403). ${body.take(200)}"
-        401 -> "The service account key was rejected."
+        401 -> if (auth.usesServiceAccount) "The service account key was rejected."
+        else "Google sign-in has expired. Open Settings and press Switch account to sign in again."
         else -> "Google Drive error $code: ${body.take(200)}"
     }
 
-    private class AuthInterceptor(private val auth: ServiceAccountAuth) : Interceptor {
+    private class AuthInterceptor(private val auth: DriveAuth) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             val req = chain.request()
             if (req.url.host != "www.googleapis.com" || req.header("Authorization") != null) {

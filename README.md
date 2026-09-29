@@ -13,11 +13,16 @@ Google Drive (only the folders you share)  ──Drive API, byte ranges──▶
 
 ## How it works
 
-- **Access:** a Google *service account* with read-only Drive access. You share only your
-  Movies / TV Shows folders with it, so Google itself enforces that the app sees nothing else.
-- **Setup from your phone:** the TV shows a QR code and PIN. Your phone opens a small setup page
-  served by the TV on your Wi-Fi, where you upload the key and pick folders. The key is stored
-  only on the TV, never in this repo or the APK.
+- **Sign in on the TV:** press **Sign in with Google** and pick an account that's on the TV
+  (or add one). Google Play services grants the app read-only Drive access, so it can never
+  change or delete anything. It only scans the folders you choose.
+- **Choose folders from your phone:** the TV shows a QR code and PIN. Your phone opens a small setup
+  page served by the TV on your Wi-Fi, where you browse your Drive and pick the Movies / TV Shows folders.
+- **Stricter option:** instead of signing in, upload a Google *service account* key from the phone
+  and share only your movie folders with it, so Google itself enforces that the app sees nothing else.
+  The key is stored only on the TV, never in this repo or the APK.
+- **Remote or touch:** made for a Google TV remote, but it also works with touch on Android phones
+  and tablets, where the folder picker opens in the phone's own browser.
 - **Playback:** Media3 ExoPlayer streams from the Drive API with HTTP range requests, so
   playback starts fast, seeking works, and nothing is downloaded in full.
 
@@ -32,6 +37,7 @@ Google Drive (only the folders you share)  ──Drive API, byte ranges──▶
 ## Building yourself
 
 Open the project in Android Studio (Ladybug or newer) and run the `app` configuration on a
-Google TV emulator or device, or run `./gradlew assembleDebug`.
+Google TV emulator or device, or run `./gradlew assembleDebug`. `./gradlew testDebugUnitTest` runs
+the UI tests on the JVM (Robolectric).
 
 Tech: Kotlin, Jetpack Compose for TV, Media3 ExoPlayer, OkHttp, kotlinx.serialization.

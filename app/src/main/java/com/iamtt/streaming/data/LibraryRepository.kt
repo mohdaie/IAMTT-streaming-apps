@@ -64,7 +64,7 @@ class LibraryRepository(
     private suspend fun runScan(onlyFolderId: String?) {
         run {
             val cfg = config.current
-            if (!cfg.hasKey) return
+            if (!cfg.hasAccess) return
             val targets = cfg.folders.filter { onlyFolderId == null || it.id == onlyFolderId }
             _state.update { it.copy(scanning = true, lastError = null, foundSoFar = 0) }
             var scans = _state.value.snapshot.scans

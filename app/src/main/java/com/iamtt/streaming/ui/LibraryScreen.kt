@@ -87,9 +87,12 @@ fun LibraryScreen(app: IamttApp, onPlay: (VideoFile) -> Unit, onOpenSetup: () ->
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                OutlinedButton(onClick = { app.library.rescan() }) { Text("Rescan") }
+                val rescan: () -> Unit = { app.library.rescan() }
+                OutlinedButton(onClick = rescan, modifier = Modifier.tapToClick(onClick = rescan)) { Text("Rescan") }
                 Spacer(Modifier.width(12.dp))
-                OutlinedButton(onClick = onOpenSetup) { Text("Settings") }
+                OutlinedButton(onClick = onOpenSetup, modifier = Modifier.tapToClick(onClick = onOpenSetup)) {
+                    Text("Settings")
+                }
             }
         }
 
@@ -102,7 +105,9 @@ fun LibraryScreen(app: IamttApp, onPlay: (VideoFile) -> Unit, onOpenSetup: () ->
                     )
                     if (!state.scanning) {
                         Spacer(Modifier.height(16.dp))
-                        Button(onClick = onOpenSetup) { Text("Open settings") }
+                        Button(onClick = onOpenSetup, modifier = Modifier.tapToClick(onClick = onOpenSetup)) {
+                            Text("Open settings")
+                        }
                     }
                 }
             }
@@ -160,7 +165,7 @@ private fun FolderRow(scan: FolderScan, onPlay: (VideoFile) -> Unit, firstCardMo
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun VideoCard(video: VideoFile, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(onClick = onClick, modifier = modifier.size(width = 260.dp, height = 146.dp)) {
+    Card(onClick = onClick, modifier = modifier.size(width = 260.dp, height = 146.dp).tapToClick(onClick = onClick)) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
