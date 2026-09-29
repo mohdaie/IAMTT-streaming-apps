@@ -36,6 +36,12 @@ public class ProtocolTest {
         assertEquals(1,Protocol.selectFile(-1,new String[]{"sample.mp4","film.MKV","extras.zip"},new long[]{10,100,1000}));
         assertThrows(IllegalArgumentException.class,()->Protocol.selectFile(-1,new String[]{"payload.exe"},new long[]{10}));
     }
+    @Test public void readsYearsFromCommonCatalogueFields() throws Exception {
+        assertEquals(2026,Protocol.year(new JSONObject("{\"releaseInfo\":\"2026–\"}")));
+        assertEquals(2018,Protocol.year(new JSONObject("{\"year\":2018}")));
+        assertEquals(2024,Protocol.year(new JSONObject("{\"released\":\"2024-04-01T00:00:00.000Z\"}")));
+        assertEquals(0,Protocol.year(new JSONObject("{}")));
+    }
     @Test public void treatsNullFileIndexAsUnspecified() throws Exception {
         assertEquals(-1,Protocol.fileIndex(new JSONObject("{\"fileIdx\":null}")));
         assertEquals(0,Protocol.fileIndex(new JSONObject("{\"fileIdx\":0}")));
