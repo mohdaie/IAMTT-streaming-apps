@@ -36,6 +36,22 @@ public class ProtocolTest {
         assertEquals(1,Protocol.selectFile(-1,new String[]{"sample.mp4","film.MKV","extras.zip"},new long[]{10,100,1000}));
         assertThrows(IllegalArgumentException.class,()->Protocol.selectFile(-1,new String[]{"payload.exe"},new long[]{10}));
     }
+    @Test public void parsesTorrentioStyleSourceMetadata() throws Exception {
+        JSONObject stream=new JSONObject()
+            .put("description","1080p HEVC\n👤 27 💾 1.42 GB ⚙️ YTS")
+            .put("infoHash","0123456789012345678901234567890123456789");
+        assertEquals("1080p",Protocol.sourceQuality(stream));
+        assertEquals("HEVC",Protocol.sourceCodec(stream));
+        assertEquals("YTS",Protocol.sourcePublisher(stream));
+        assertEquals(27,Protocol.reportedSeeders(stream));
+        assertTrue(Protocol.sourceSize(stream)>1400L*1024*1024);
+        assertEquals("Strong",Protocol.sourceHealth(stream));
+    }
+    @Test public void prefersBehaviorHintVideoSize() throws Exception {
+        JSONObject stream=new JSONObject().put("description","💾 99 GB")
+            .put("behaviorHints",new JSONObject().put("videoSize",734003200));
+        assertEquals(734003200L,Protocol.sourceSize(stream));
+    }
     @Test public void readsYearsFromCommonCatalogueFields() throws Exception {
         assertEquals(2026,Protocol.year(new JSONObject("{\"releaseInfo\":\"2026–\"}")));
         assertEquals(2018,Protocol.year(new JSONObject("{\"year\":2018}")));
