@@ -101,8 +101,18 @@ class SetupServer(
         socket.use { s ->
             s.soTimeout = 30_000
             val response = try {
-                val req = readRequest(BufferedInputStream(s.getInputStream())) ?: return
-                route(req)
+                val req = try {
+                    readRequest(BufferedInputStream(s.getInputStream())) ?: return
+                } catch (e: java.io.IOException) {
+                    return // the phone's connection dropped; nobody to answer
+                }
+                try {
+                    route(req)
+                } catch (e: java.io.IOException) {
+                    // Drive calls fail this way when the device is offline or Android has cut the app's network.
+                    Log.w(TAG, "setup request couldn't reach Google", e)
+                    error(502, "Couldn't reach Google Drive. Check the internet connection, then tap Refresh. (${e.message})")
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "setup request failed", e)
                 error(500, e.message ?: "Something went wrong")

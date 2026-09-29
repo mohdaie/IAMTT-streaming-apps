@@ -38,6 +38,7 @@
   .tabs { display:flex; gap:8px; margin:4px 0 8px; } .tabs button.on { background:#3a3a44; font-weight:600; }
   .crumbs { font-size:14px; color:var(--muted); margin:6px 0 2px; word-break:break-word; }
   .crumbs a { color:var(--text); cursor:pointer; text-decoration:underline; }
+  li.here { background:#16161a; border-radius:10px; padding:10px; margin-bottom:6px; border-top:0; }
   button.open { background:none; padding:6px 0; text-align:left; font-weight:600; flex:1 1 150px; word-break:break-word; }
 </style>
 </head>
@@ -56,13 +57,13 @@
     <section id="s1">
       <h2><span class="num">1</span>Connect Google Drive</h2>
       <div id="modeNone">
-        <p>On the TV, press <b>Sign in with Google</b> and choose the account that has your movies.</p>
+        <p>In the IAMTT app, press <b>Sign in with Google</b> and choose the account that has your movies.</p>
         <p class="muted">This page updates by itself once you're signed in.</p>
       </div>
       <div id="modeGoogle" class="hidden">
-        <p>Signed in on the TV as:</p>
+        <p>Signed in as:</p>
         <div class="email" id="account"></div>
-        <p class="muted">To use a different account, press <b>Switch account</b> on the TV.</p>
+        <p class="muted">To use a different account, press <b>Switch account</b> in the IAMTT app.</p>
       </div>
       <div id="modeKey" class="hidden">
         <p>Using a service account. Its Google address is:</p>
@@ -178,7 +179,7 @@ function render() {
         <button onclick="removeFolder('${esc(f.id)}')">Remove</button></li>`).join('');
   }
   $('scanStatus').textContent = s.scanning ? 'Scanning your folders… the TV updates as titles are found.'
-    : (s.lastError ? '⚠ ' + s.lastError : (s.folders.length ? 'All done. You can close this page and press Done on the TV.' : ''));
+    : (s.lastError ? '⚠ ' + s.lastError : (s.folders.length ? 'All done. Press Done in the IAMTT app.' : ''));
   $('rescanBtn').disabled = s.scanning || !s.folders.length;
 }
 
@@ -207,6 +208,7 @@ async function copyEmail() {
 // Folder browser. crumbs[0] is where browsing started: 'root' (My Drive) or 'shared'.
 let crumbs = [];
 let listing = null; // folders in the current crumb, or null while loading
+let loadFailed = false;
 const TOP = { root: 'My Drive', shared: 'Shared with me' };
 
 function browseFrom(top) { crumbs = [{ id: top, name: TOP[top] }]; loadFolders(); }
@@ -215,7 +217,7 @@ function openAt(i) { const f = listing[i]; crumbs.push({ id: f.id, name: f.name 
 
 async function loadFolders() {
   if (!crumbs.length) return;
-  clear($('folderMsg')); listing = null; renderFolders();
+  clear($('folderMsg')); listing = null; loadFailed = false; renderFolders();
   const here = crumbs[crumbs.length - 1];
   try {
     const { folders } = await api(here.id === 'shared' ? '/api/shared' : '/api/browse?parent=' + encodeURIComponent(here.id));
@@ -223,7 +225,7 @@ async function loadFolders() {
     if (!folders.length && here.id === 'shared' && state.mode === 'serviceAccount') {
       show($('folderMsg'), 'No shared folders found yet. Sharing can take a minute to show up — try again shortly.', 'err');
     }
-  } catch (e) { listing = []; show($('folderMsg'), e.message, 'err'); }
+  } catch (e) { listing = []; loadFailed = true; show($('folderMsg'), e.message, 'err'); }
   renderFolders();
 }
 
@@ -238,19 +240,30 @@ function renderFolders() {
   const ul = $('browser');
   if (!crumbs.length) { ul.innerHTML = ''; return; }
   if (listing === null) { ul.innerHTML = '<li class="muted">Loading…</li>'; return; }
-  if (!listing.length) { ul.innerHTML = '<li class="muted">No folders here.</li>'; return; }
-  ul.innerHTML = listing.map((f, i) => {
-    const added = state.folders.find(x => x.id === f.id);
-    return `<li><button class="open" onclick="openAt(${i})">📁 ${esc(f.name)}</button>
-      ${added ? `<span class="tag ${added.type === 'TV_SHOWS' ? 'tv' : 'movies'}">Added as ${typeLabel(added.type)}</span>` :
-        `<span class="row" style="margin:0"><button onclick="addAt(${i},'MOVIES')">+ Movies</button><button onclick="addAt(${i},'TV_SHOWS')">+ TV Shows</button></span>`}
-      </li>`;
-  }).join('');
+  if (loadFailed) { ul.innerHTML = '<li class="muted">Couldn\'t load folders. Tap Refresh to try again.</li>'; return; }
+  // Inside a folder, it can be added itself (for videos that sit directly in it).
+  const here = crumbs[crumbs.length - 1];
+  const hereRow = crumbs.length > 1 ? `<li class="here"><span class="name">This folder: ${esc(here.name)}</span>
+      ${addButtons(here.id, `addHere`)}</li>` : '';
+  const empty = !listing.length ? `<li class="muted">${crumbs.length > 1 ? 'No folders inside. If your videos are in this folder, add it above.' : 'No folders here.'}</li>` : '';
+  ul.innerHTML = hereRow + empty + listing.map((f, i) => `<li><button class="open" onclick="openAt(${i})">📁 ${esc(f.name)}</button>
+      ${addButtons(f.id, `addAt`, i)}</li>`).join('');
 }
 
-async function addAt(i, type) {
+// "Added as …" if already chosen, otherwise the + Movies / + TV Shows buttons.
+function addButtons(id, fn, arg) {
+  const added = state.folders.find(x => x.id === id);
+  if (added) return `<span class="tag ${added.type === 'TV_SHOWS' ? 'tv' : 'movies'}">Added as ${typeLabel(added.type)}</span>`;
+  const call = type => arg === undefined ? `${fn}('${type}')` : `${fn}(${arg},'${type}')`;
+  return `<span class="row" style="margin:0"><button onclick="${call('MOVIES')}">+ Movies</button><button onclick="${call('TV_SHOWS')}">+ TV Shows</button></span>`;
+}
+
+function addAt(i, type) { return addFolder(listing[i].id, type); }
+function addHere(type) { return addFolder(crumbs[crumbs.length - 1].id, type); }
+
+async function addFolder(id, type) {
   try {
-    state = await api('/api/folders', { method: 'POST', body: JSON.stringify({ input: listing[i].id, type }) });
+    state = await api('/api/folders', { method: 'POST', body: JSON.stringify({ input: id, type }) });
     render();
     show($('folderMsg'), 'Added. Scanning has started.', 'ok');
   } catch (e) { show($('folderMsg'), e.message, 'err'); }

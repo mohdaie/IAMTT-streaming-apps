@@ -1,10 +1,7 @@
 package com.iamtt.streaming.ui
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -84,22 +81,18 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
     }
     val url = if (port != null && ip != null) "http://$ip:$port/?pin=$pin" else null
 
-    // Phones and tablets can open the folder picker in their own browser; TVs rarely have one.
+    // Phones and tablets can pick folders on their own screen; TVs use the QR code and a phone.
     val isTv = remember {
         val uiMode = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
         uiMode == Configuration.UI_MODE_TYPE_TELEVISION ||
             context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
     }
-    var openHereError by remember { mutableStateOf<String?>(null) }
-    val openHere: () -> Unit = {
-        port?.let { p ->
-            openHereError = try {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:$p/?pin=$pin")))
-                null
-            } catch (e: ActivityNotFoundException) {
-                "No web browser found on this device."
-            }
-        }
+    var pickerOpen by remember { mutableStateOf(false) }
+    val openHere: () -> Unit = { pickerOpen = true }
+    val pickerPort = port
+    if (pickerOpen && pickerPort != null) {
+        FolderPicker(url = "http://127.0.0.1:$pickerPort/?pin=$pin", onClose = { pickerOpen = false })
+        return
     }
 
     val signIn = rememberGoogleSignIn(app)
@@ -185,7 +178,6 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
                             modifier = Modifier.tapToClick(enabled, openHere),
                         ) { Text("Choose folders here") }
                     }
-                    openHereError?.let { Warning(it) }
                 }
                 config.folders.forEach { f ->
                     val scan = library.snapshot.scans.firstOrNull { it.folder.id == f.id }

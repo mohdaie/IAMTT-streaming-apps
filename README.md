@@ -22,7 +22,7 @@ Google Drive (only the folders you share)  ──Drive API, byte ranges──▶
   and share only your movie folders with it, so Google itself enforces that the app sees nothing else.
   The key is stored only on the TV, never in this repo or the APK.
 - **Remote or touch:** made for a Google TV remote, but it also works with touch on Android phones
-  and tablets, where the folder picker opens in the phone's own browser.
+  and tablets, where the folder picker opens right inside the app.
 - **Playback:** Media3 ExoPlayer streams from the Drive API with HTTP range requests, so
   playback starts fast, seeking works, and nothing is downloaded in full.
 
