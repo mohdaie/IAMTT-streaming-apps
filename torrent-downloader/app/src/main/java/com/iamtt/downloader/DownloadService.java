@@ -98,14 +98,27 @@ public class DownloadService extends Service {
         TorrentHandle handle=null;
         try {
             waitForNetwork(item); if(!active(item)) return;
-            if(session==null) {session=new SessionManager();session.start();}
-            item.state="Finding peers";item.detail="Fetching torrent metadata. This can take up to 60 seconds.";
+            if(session==null) {
+                session=new SessionManager();
+                SettingsPack settings=new SettingsPack();
+                settings.setEnableDht(true);settings.setEnableLsd(true);
+                session.start(new SessionParams(settings));
+            }
+            item.peers=0;item.state="Finding peers";
+            item.detail=item.reportedSeeds>=0
+                ?"Fetching torrent metadata · "+item.reportedSeeds+" seeders reported by the addon. Up to 90 seconds."
+                :"Fetching torrent metadata · addon did not report seeders. Up to 90 seconds.";
             File root=new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),item.hash);
             if(!root.exists() && !root.mkdirs()) throw new IOException("Cannot create the download folder.");
             File metadata=new File(getFilesDir(),item.hash+".torrent");
-            byte[] bytes=metadata.exists()?Files.readAllBytes(metadata.toPath()):session.fetchMagnet(item.magnet,60,getCacheDir());
+            byte[] bytes=metadata.exists()?Files.readAllBytes(metadata.toPath()):session.fetchMagnet(item.magnet,90,getCacheDir());
             if(!active(item)) return;
-            if(bytes==null) throw new IOException("No peers supplied the torrent metadata. Try another source or retry later.");
+            if(bytes==null) {
+                String hint=item.reportedSeeds>=0
+                    ?" The addon reported "+item.reportedSeeds+" seeders, but none supplied metadata to this device."
+                    :" The addon did not provide a usable seeder count.";
+                throw new IOException("No reachable peer supplied torrent metadata within 90 seconds."+hint+" Choose a source with stronger swarm health.");
+            }
             TorrentInfo info=new TorrentInfo(bytes);
             if(!info.isValid() || !info.infoHash().toHex().equalsIgnoreCase(item.hash)) throw new IOException("Torrent metadata does not match the selected source.");
             Files.write(metadata.toPath(),bytes);
