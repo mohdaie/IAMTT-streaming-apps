@@ -32,7 +32,7 @@ public class MainActivity extends Activity {
     private List<JSONObject> currentTitles=new ArrayList<>();
     private List<JSONObject> currentStreams=new ArrayList<>();
     private LinearLayout sourceArea;
-    private String sourceQuality="All",sourcePublisher="All",sourceSize="All",sourceSort="Best peers";
+    private String sourceQuality="All",sourcePublisher="All",sourceSize="All",sourceSeeders="All",sourceSort="Best peers";
     private final Map<String,TextView> statuses=new HashMap<>();
     private final Map<String,ProgressBar> bars=new HashMap<>();
     private final Map<String,String> renderedStates=new HashMap<>();
@@ -280,7 +280,7 @@ public class MainActivity extends Activity {
 
     private void sources(String type,String id,String displayTitle){
         generation++;tab="Sources";int token=generation;body.removeAllViews();
-        sourceQuality="All";sourcePublisher="All";sourceSize="All";sourceSort="Best peers";currentStreams.clear();
+        sourceQuality="All";sourcePublisher="All";sourceSize="All";sourceSeeders="All";sourceSort="Best peers";currentStreams.clear();
         body.addView(button(type.equals("series")?"‹ Back to episodes":"‹ Back to movies",()->{if(type.equals("series")&&activeSeries!=null)episodes(activeSeries);else show("Discover");}));
         title(displayTitle);note("Torrent health is a live swarm signal, not a guarantee. Prefer sources with more reported seeders.");
         TextView loading=text("Finding available sources…",14,MUTED);body.addView(loading);
@@ -306,12 +306,14 @@ public class MainActivity extends Activity {
         Button sort=button("Sort · "+sourceSort,()->chooseSourceSort(type,displayTitle));
         r2.addView(s,new LinearLayout.LayoutParams(0,dp(46),1));LinearLayout.LayoutParams gs=new LinearLayout.LayoutParams(0,dp(46),1);gs.leftMargin=dp(8);r2.addView(sort,gs);
         sourceArea.addView(r1);LinearLayout.LayoutParams rowGap=new LinearLayout.LayoutParams(-1,-2);rowGap.topMargin=dp(8);sourceArea.addView(r2,rowGap);
+        Button seedFilter=button("Seeders · "+sourceSeeders,()->chooseSourceSeeders(type,displayTitle));
+        LinearLayout.LayoutParams seedGap=new LinearLayout.LayoutParams(-1,dp(46));seedGap.topMargin=dp(8);sourceArea.addView(seedFilter,seedGap);
 
         List<JSONObject> list=new ArrayList<>();
         for(JSONObject stream:currentStreams){
             if(!"All".equals(sourceQuality)&&!sourceQuality.equals(Protocol.sourceQuality(stream)))continue;
             if(!"All".equals(sourcePublisher)&&!sourcePublisher.equals(Protocol.sourcePublisher(stream)))continue;
-            if(!sourceSizeMatches(stream))continue;
+            if(!sourceSizeMatches(stream)||!sourceSeederMatches(stream))continue;
             list.add(stream);
         }
         list.sort((a,b)->{
@@ -349,6 +351,13 @@ public class MainActivity extends Activity {
     }
     private void chooseSourceSize(String type,String title){
         chooseSourceOption("File size",Arrays.asList("All","< 1 GB","1–3 GB","3–8 GB","8+ GB"),sourceSize,v->{sourceSize=v;renderSourceArea(type,title);});
+    }
+    private void chooseSourceSeeders(String type,String title){
+        chooseSourceOption("Minimum reported seeders",Arrays.asList("All","1+","5+","20+"),sourceSeeders,v->{sourceSeeders=v;renderSourceArea(type,title);});
+    }
+    private boolean sourceSeederMatches(JSONObject stream){
+        if("All".equals(sourceSeeders))return true;int seeds=Protocol.reportedSeeders(stream);if(seeds<0)return false;
+        if("1+".equals(sourceSeeders))return seeds>=1;if("5+".equals(sourceSeeders))return seeds>=5;return seeds>=20;
     }
     private void chooseSourceSort(String type,String title){
         chooseSourceOption("Sort torrents",Arrays.asList("Best peers","Smallest","Largest"),sourceSort,v->{sourceSort=v;renderSourceArea(type,title);});
