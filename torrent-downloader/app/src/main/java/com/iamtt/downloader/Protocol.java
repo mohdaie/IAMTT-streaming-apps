@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
+import java.util.regex.*;
 
 /** Pure protocol and file-selection rules; no Android or native engine required. */
 public final class Protocol {
@@ -87,6 +88,17 @@ public final class Protocol {
         }
         return result.toString();
     }
+    public static int year(JSONObject media) {
+        Object raw = media.opt("year");
+        if (raw instanceof Number) return ((Number) raw).intValue();
+        for (String key : new String[]{"releaseInfo","year","released"}) {
+            String value = media.optString(key, "");
+            Matcher m = Pattern.compile("(19|20)\\d{2}").matcher(value);
+            if (m.find()) return Integer.parseInt(m.group());
+        }
+        return 0;
+    }
+
     public static int fileIndex(JSONObject stream) {
         Object value = stream.opt("fileIdx");
         if (value == null || value == JSONObject.NULL) return -1;
