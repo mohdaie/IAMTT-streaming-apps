@@ -15,13 +15,18 @@ data class LibraryFolder(
 
 @Serializable
 data class AppConfig(
+    /** Email of the Google account on this TV that the app signed in with. */
+    val googleAccount: String? = null,
     /** Full service-account JSON key. Stored only on this device, never shown back. */
     val serviceAccountJson: String? = null,
     val serviceAccountEmail: String? = null,
     val folders: List<LibraryFolder> = emptyList(),
 ) {
+    /** Only one way of reaching Drive is active at a time; signing in with Google takes precedence. */
+    val usesGoogleAccount: Boolean get() = !googleAccount.isNullOrBlank()
     val hasKey: Boolean get() = !serviceAccountJson.isNullOrBlank()
-    val isReady: Boolean get() = hasKey && folders.isNotEmpty()
+    val hasAccess: Boolean get() = usesGoogleAccount || hasKey
+    val isReady: Boolean get() = hasAccess && folders.isNotEmpty()
 }
 
 /** One playable video found inside a library folder. */

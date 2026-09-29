@@ -7,7 +7,9 @@ import com.iamtt.streaming.data.ConfigStore
 import com.iamtt.streaming.data.FolderType
 import com.iamtt.streaming.data.LibraryFolder
 import com.iamtt.streaming.data.LibraryRepository
+import com.iamtt.streaming.drive.DriveAuth
 import com.iamtt.streaming.drive.DriveClient
+import com.iamtt.streaming.drive.DriveFile
 import com.iamtt.streaming.drive.ServiceAccountAuth
 import com.iamtt.streaming.drive.ServiceAccountKey
 import com.iamtt.streaming.drive.parseFolderId
@@ -33,19 +35,20 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
 /**
  * A tiny web server that runs on the TV only while the setup screen is open.
- * Your phone opens it (via the QR code) to upload the service account key and pick
- * which Drive folders to use. Every API call needs the 4-digit PIN shown on the TV,
- * so someone else on the Wi-Fi can't change your setup.
+ * Your phone opens it (via the QR code) to pick which Drive folders to use, or to upload
+ * a service account key instead of signing in on the TV. Every API call needs the 4-digit
+ * PIN shown on the TV, so someone else on the Wi-Fi can't change your setup.
  */
 class SetupServer(
     private val context: Context,
     private val config: ConfigStore,
     private val drive: DriveClient,
-    private val auth: ServiceAccountAuth,
+    private val auth: DriveAuth,
     private val library: LibraryRepository,
 ) {
     val pin: String = Random.nextInt(1000, 10000).toString()
@@ -55,6 +58,9 @@ class SetupServer(
     private var server: ServerSocket? = null
     private val pool = Executors.newFixedThreadPool(4)
     @Volatile private var running = false
+
+    /** A 4-digit PIN is guessable, so this setup session stops accepting any after too many misses. */
+    private val wrongPins = AtomicInteger(0)
 
     fun start(): Int {
         if (running) return port
@@ -164,13 +170,20 @@ class SetupServer(
         }
         if (!req.path.startsWith("/api/")) return error(404, "Not found")
 
+        if (wrongPins.get() >= MAX_WRONG_PINS) {
+            return error(403, "Too many wrong PINs. Press Back on the TV and open setup again for a new PIN.")
+        }
         val given = req.headers["x-pin"] ?: req.query["pin"]
-        if (given != pin) return error(403, "Wrong PIN. Use the 4-digit PIN shown on the TV.")
+        if (given != pin) {
+            wrongPins.incrementAndGet()
+            return error(403, "Wrong PIN. Use the 4-digit PIN shown on the TV.")
+        }
 
         return when ("${req.method} ${req.path}") {
             "GET /api/state" -> json(element = stateJson())
             "POST /api/key" -> saveKey(req.body)
             "GET /api/shared" -> sharedFolders()
+            "GET /api/browse" -> browse(req.query["parent"])
             "POST /api/folders" -> addFolder(req.body)
             "POST /api/folders/remove" -> removeFolder(req.body)
             "POST /api/rescan" -> { library.rescan(); json(element = stateJson()) }
@@ -182,6 +195,12 @@ class SetupServer(
         val cfg = config.current
         val lib = library.state.value
         return buildJsonObject {
+            put("mode", when {
+                cfg.usesGoogleAccount -> "google"
+                cfg.hasKey -> "serviceAccount"
+                else -> "none"
+            })
+            cfg.googleAccount?.let { put("account", it) }
             put("hasKey", cfg.hasKey)
             cfg.serviceAccountEmail?.let { put("email", it) }
             put("scanning", lib.scanning)
@@ -215,14 +234,27 @@ class SetupServer(
             return error(400, "Google didn't accept this key: ${e.message}")
         }
         config.setKey(body.trim(), key.clientEmail)
-        auth.invalidate()
+        auth.serviceAccount.invalidate()
         return json(element = stateJson())
     }
 
     private fun sharedFolders(): HttpResponse {
-        if (!config.current.hasKey) return error(400, "Upload the key first.")
+        if (!config.current.hasAccess) return error(400, NOT_CONNECTED)
+        return folderList(runBlocking { drive.sharedFolders() })
+    }
+
+    private fun browse(parent: String?): HttpResponse {
+        if (!config.current.hasAccess) return error(400, NOT_CONNECTED)
+        val folders = try {
+            runBlocking { drive.childFolders(parent?.takeIf { it.isNotBlank() } ?: "root") }
+        } catch (e: IllegalArgumentException) {
+            return error(400, e.message ?: "Bad folder")
+        }
+        return folderList(folders)
+    }
+
+    private fun folderList(folders: List<DriveFile>): HttpResponse {
         val chosen = config.current.folders.associateBy { it.id }
-        val folders = runBlocking { drive.sharedFolders() }
         return json(element = buildJsonObject {
             put("folders", JsonArray(folders.map { f ->
                 buildJsonObject {
@@ -235,7 +267,7 @@ class SetupServer(
     }
 
     private fun addFolder(body: String): HttpResponse {
-        if (!config.current.hasKey) return error(400, "Upload the key first.")
+        if (!config.current.hasAccess) return error(400, NOT_CONNECTED)
         val obj = runCatching { AppJson.parseToJsonElement(body).jsonObject }.getOrNull()
             ?: return error(400, "Bad request")
         val input = obj["input"]?.jsonPrimitive?.content.orEmpty()
@@ -264,6 +296,8 @@ class SetupServer(
 
     companion object {
         private const val TAG = "SetupServer"
+        private const val MAX_WRONG_PINS = 10
+        private const val NOT_CONNECTED = "Sign in with Google on the TV first (or upload a service account key)."
 
         /** The TV's address on the home network, e.g. 192.168.1.23. */
         fun localIpAddress(): String? = runCatching {

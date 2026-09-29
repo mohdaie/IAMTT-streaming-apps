@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import com.iamtt.streaming.IamttApp
 import com.iamtt.streaming.data.FolderType
@@ -63,12 +64,13 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
         onDispose { server.stop() }
     }
 
+    val signIn = rememberGoogleSignIn(app)
+    val signInFocus = remember { FocusRequester() }
     val doneFocus = remember { FocusRequester() }
-    LaunchedEffect(config.isReady) {
-        if (config.isReady) {
-            delay(150)
-            runCatching { doneFocus.requestFocus() }
-        }
+    // Re-run when the sign-in button swaps styles after signing in, so focus isn't lost.
+    LaunchedEffect(config.isReady, config.hasAccess) {
+        delay(150)
+        runCatching { if (config.isReady) doneFocus.requestFocus() else signInFocus.requestFocus() }
     }
 
     Row(
@@ -80,23 +82,51 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text("IAMTT", color = IamttRed, fontSize = 40.sp, fontWeight = FontWeight.Black)
-            Text("Set up on your phone", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            Text("Set up", style = MaterialTheme.typography.headlineMedium, color = Color.White)
             Spacer(Modifier.height(12.dp))
             Text(
-                "Scan the QR code with your phone (on the same Wi-Fi). The page lets you upload your " +
-                    "Google service account key and choose which Drive folders to use. " +
+                "Sign in with the Google account that has your movies, then scan the QR code with your " +
+                    "phone (on the same Wi-Fi) to choose which Drive folders to use. " +
                     "Only those folders are ever scanned.",
                 color = IamttMuted, fontSize = 18.sp,
             )
             Spacer(Modifier.height(28.dp))
 
             StatusLine(
-                done = config.hasKey,
-                text = if (config.hasKey) "Key added — ${config.serviceAccountEmail}" else "Step 1: upload the service account key",
+                done = config.hasAccess,
+                text = when {
+                    config.usesGoogleAccount -> "Signed in as ${config.googleAccount}"
+                    config.hasKey -> "Using service account ${config.serviceAccountEmail}"
+                    else -> "Step 1: sign in with Google"
+                },
             )
+            Row(modifier = Modifier.padding(start = 34.dp, top = 6.dp, bottom = 8.dp)) {
+                val label = when {
+                    signIn.busy -> "Signing in…"
+                    config.usesGoogleAccount -> "Switch account"
+                    else -> "Sign in with Google"
+                }
+                if (config.hasAccess) {
+                    OutlinedButton(
+                        onClick = { signIn.start(switching = true) },
+                        modifier = Modifier.focusRequester(signInFocus),
+                    ) { Text(label) }
+                } else {
+                    Button(
+                        onClick = { signIn.start() },
+                        modifier = Modifier.focusRequester(signInFocus),
+                    ) { Text(label) }
+                }
+            }
+            signIn.error?.let {
+                Text(
+                    "⚠ $it", color = Color(0xFFF5A524), fontSize = 16.sp,
+                    modifier = Modifier.padding(start = 34.dp, bottom = 8.dp),
+                )
+            }
             StatusLine(
                 done = config.folders.isNotEmpty(),
-                text = if (config.folders.isEmpty()) "Step 2: add your Movies / TV Shows folders"
+                text = if (config.folders.isEmpty()) "Step 2: scan the QR code to add your Movies / TV Shows folders"
                 else "${config.folders.size} folder(s) added",
             )
             config.folders.forEach { f ->
@@ -143,7 +173,7 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(18.dp))
-            Text("Or open this address on your phone:", color = IamttMuted, fontSize = 15.sp)
+            Text("Scan to choose folders, or open this address on your phone:", color = IamttMuted, fontSize = 15.sp)
             Text(
                 url?.substringBefore("/?") ?: "—",
                 color = Color.White, fontSize = 20.sp, fontFamily = FontFamily.Monospace,
