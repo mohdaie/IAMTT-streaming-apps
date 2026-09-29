@@ -27,9 +27,9 @@ Do this on a computer, signed in with any Google account (ideally the one that h
 
 > **Stay signed in for good (recommended):** while the app is in "Testing", Google may ask
 > you to sign in again every 7 days. To avoid that, go to **Audience** and click
-> **Publish app**. Google doesn't need to review a personal app. When you sign in, you'll
-> just see a "Google hasn't verified this app" warning once: tap **Advanced →
-> Go to IAMTT**. It's your own app.
+> **Publish app**. You don't have to submit it for Google's verification: an unverified app
+> works for up to 100 accounts. When you sign in, you'll see a "Google hasn't verified this
+> app" warning once: tap **Advanced → Go to IAMTT**. It's your own app.
 
 The app only asks for **read-only** Drive access, so it can never change or delete anything.
 
