@@ -10,18 +10,42 @@ Package: `com.iamtt.downloader`. Android 9+ (API 28). ARM64, ARMv7 and x86_64.
 
 1. Install the separate `IAMTT-Downloader.apk`.
 2. Open **Addons → Add Cinemeta catalogue**.
-3. Open **Configure Torrentio**. Leave Debrid Provider unset for raw torrent sources.
-4. Tap Install in its configuration page and choose IAMTT Downloader, or copy
-   its configured manifest URL and use **Paste addon link**.
-5. Search in Discover, open **Find download sources**, choose **Download to phone**.
-6. Downloads shows progress, speed, peers and pause/resume. Wi-Fi-only is on by default.
-7. When complete, Play, Share, or **Save a copy** using the Android file picker.
-   Drive is available there only if its installed document provider offers it.
+3. Add a compatible source addon you trust and are authorized to use.
+4. In **Discover**, choose **Movies** or **TV Shows**.
+5. Results show poster artwork and are sorted by **newest year first** by default.
+   Use **Year** to filter and **Sort** to switch between newest/oldest.
+6. For TV, open a show, choose a season and episode, then find sources for that
+   episode. When a source provides a file index, IAMTT downloads only that selected
+   episode even when the torrent contains a full season pack.
+7. Downloads shows progress, speed, peers and pause/resume.
+8. When complete, Play, Share, or **Save a copy** using the Android file picker.
 
-Torrentio is a source addon; Cinemeta supplies search/catalogue data. Only movies
-and raw SHA-1 torrent sources are supported in this first prototype. Direct HTTP,
-debrid, HLS, series episode browsing and cloud-server downloads are not implemented.
-No movie files, addon credentials or user data are bundled or uploaded to GitHub.
+Cinemeta supplies catalogue metadata and poster/episode artwork. The downloader
+handles raw SHA-1 torrent sources selected by the user. Direct HTTP, debrid, HLS,
+automatic cloud upload, and automatic whole-season downloading are not implemented.
+
+### Recommended library folders
+
+For media servers and the IAMTT streaming library, save copies with conventional
+names so scanners can identify them reliably:
+
+```
+Movies/
+  Dune Part Two (2024)/
+    Dune Part Two (2024).mkv
+
+TV Shows/
+  Severance/
+    Season 01/
+      Severance - S01E01 - Good News About Hell.mkv
+      Severance - S01E02 - Half Loop.mkv
+    Season 02/
+      Severance - S02E01 - Hello, Ms. Cobel.mkv
+```
+
+Use `S01E01` style episode numbers. MP4 and MKV are the safest library formats;
+the downloader also accepts AVI, MOV, WebM, M4V, TS and M2TS when supplied by the
+selected source.
 
 ## Storage and recovery
 
