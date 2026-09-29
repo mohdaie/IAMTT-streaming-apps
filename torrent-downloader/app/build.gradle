@@ -6,6 +6,7 @@ android {
         applicationId 'com.iamtt.downloader'
         minSdk 28
         targetSdk 35
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
         versionName '0.1.' + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
     }
@@ -31,4 +32,7 @@ dependencies {
     implementation 'org.libtorrent4j:libtorrent4j-android-x86_64:2.1.0-39'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:core:1.6.1'
 }

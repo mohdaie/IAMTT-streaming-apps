@@ -127,7 +127,7 @@ public class DownloadService extends Service {
             while(active(item)) {
                 waitForNetwork(item); if(!active(item)) break;
                 TorrentStatus status=handle.status(true);
-                if(status.errorCode().value()!=0) throw new IOException("The torrent engine reported a file or network error. Check storage and retry.");
+                if(status.errorCode().isError()) throw new IOException("The torrent engine reported a file or network error. Check storage and retry.");
                 item.done=status.totalWantedDone();item.speed=status.downloadRate();item.peers=status.numPeers();
                 item.state="Downloading";item.detail=item.peers==0?"Waiting for peers. Availability depends on the source.":"Downloading selected video";
                 if(status.isFinished() && item.done>=item.total && output.exists()) {
