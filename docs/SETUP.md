@@ -65,6 +65,12 @@ app and press **Switch account**.
 
 Only the folders you add are scanned. To change them later, open **Settings** in the app.
 
+## On an Android phone or tablet
+
+IAMTT also works with touch. Open the APK link from step 2 in the phone's browser and install it.
+Then tap **Sign in with Google**, followed by **Choose folders here**: the folder picker opens in the
+phone's browser (no Wi-Fi needed). Pick your folders, switch back to IAMTT and tap **Done**.
+
 ## Recommended folder layout
 
 Scanning works with any layout, but Phase 2 (posters and episode info) matches titles

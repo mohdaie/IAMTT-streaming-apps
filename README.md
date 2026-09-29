@@ -21,6 +21,8 @@ Google Drive (only the folders you share)  ──Drive API, byte ranges──▶
 - **Stricter option:** instead of signing in, upload a Google *service account* key from the phone
   and share only your movie folders with it, so Google itself enforces that the app sees nothing else.
   The key is stored only on the TV, never in this repo or the APK.
+- **Remote or touch:** made for a Google TV remote, but it also works with touch on Android phones
+  and tablets, where the folder picker opens in the phone's own browser.
 - **Playback:** Media3 ExoPlayer streams from the Drive API with HTTP range requests, so
   playback starts fast, seeking works, and nothing is downloaded in full.
 
@@ -35,6 +37,7 @@ Google Drive (only the folders you share)  ──Drive API, byte ranges──▶
 ## Building yourself
 
 Open the project in Android Studio (Ladybug or newer) and run the `app` configuration on a
-Google TV emulator or device, or run `./gradlew assembleDebug`.
+Google TV emulator or device, or run `./gradlew assembleDebug`. `./gradlew testDebugUnitTest` runs
+the UI tests on the JVM (Robolectric).
 
 Tech: Kotlin, Jetpack Compose for TV, Media3 ExoPlayer, OkHttp, kotlinx.serialization.
