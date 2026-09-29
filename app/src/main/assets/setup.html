@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IAMTT Setup</title>
+<style>
+  :root { --bg:#0e0e10; --card:#1a1a1e; --line:#2a2a30; --text:#f2f2f4; --muted:#9a9aa3; --red:#e50914; --ok:#2fbf71; --warn:#f5a524; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:26px; margin:4px 0 2px; letter-spacing:.5px; } h1 b { color:var(--red); }
+  .sub { color:var(--muted); margin:0 0 18px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin:14px 0; }
+  h2 { font-size:17px; margin:0 0 10px; display:flex; gap:10px; align-items:center; }
+  .num { background:var(--red); color:#fff; border-radius:50%; width:24px; height:24px; display:inline-grid; place-items:center; font-size:13px; flex:none; }
+  .done .num { background:var(--ok); }
+  p { margin:6px 0; } .muted { color:var(--muted); font-size:14px; }
+  button, .btn { font:inherit; border:0; border-radius:10px; padding:10px 14px; background:#2c2c33; color:var(--text); cursor:pointer; }
+  button.primary { background:var(--red); color:#fff; font-weight:600; }
+  button:disabled { opacity:.5; }
+  input, select { font:inherit; width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#111114; color:var(--text); }
+  .row { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  .row > input { flex:1 1 200px; }
+  .email { font-family:ui-monospace,Menlo,monospace; font-size:13px; background:#111114; border:1px dashed var(--line); padding:10px; border-radius:10px; word-break:break-all; }
+  ul { list-style:none; padding:0; margin:8px 0 0; }
+  li { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  li:first-child { border-top:0; }
+  .name { font-weight:600; word-break:break-word; }
+  .tag { font-size:12px; padding:2px 8px; border-radius:999px; background:#2c2c33; color:var(--muted); }
+  .tag.movies { background:#3a1216; color:#ff8a90; } .tag.tv { background:#12263a; color:#8ac6ff; }
+  .msg { margin-top:10px; padding:10px 12px; border-radius:10px; font-size:14px; display:none; }
+  .msg.err { display:block; background:#3a1216; color:#ffb3b7; }
+  .msg.ok { display:block; background:#12301f; color:#9be7bd; }
+  .hidden { display:none !important; }
+  ol { padding-left:20px; margin:6px 0; } ol li { display:list-item; border:0; padding:3px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1><b>IAMTT</b> setup</h1>
+  <p class="sub">Connect the TV app to the Google Drive folders you want to watch. Only the folders you add here are ever scanned.</p>
+
+  <section id="pinBox" class="hidden">
+    <h2>Enter the PIN shown on the TV</h2>
+    <div class="row"><input id="pinInput" inputmode="numeric" maxlength="4" placeholder="4-digit PIN"><button class="primary" onclick="setPin()">Continue</button></div>
+    <div id="pinMsg" class="msg"></div>
+  </section>
+
+  <div id="app" class="hidden">
+    <section id="s1">
+      <h2><span class="num">1</span>Service account key</h2>
+      <div id="keyMissing">
+        <p class="muted">Upload the JSON key file you downloaded from Google Cloud. It is stored only on the TV.</p>
+        <div class="row"><input type="file" id="keyFile" accept=".json,application/json"><button class="primary" id="keyBtn" onclick="uploadKey()">Upload</button></div>
+      </div>
+      <div id="keyPresent" class="hidden">
+        <p>The app's Google address is:</p>
+        <div class="email" id="email"></div>
+        <div class="row"><button onclick="copyEmail()">Copy address</button><button onclick="replaceKey()">Replace key</button></div>
+      </div>
+      <div id="keyMsg" class="msg"></div>
+    </section>
+
+    <section id="s2">
+      <h2><span class="num">2</span>Share your folders with that address</h2>
+      <ol class="muted">
+        <li>Open Google Drive and right-click your Movies (or TV Shows) folder.</li>
+        <li>Share → paste the address above → set to <b>Viewer</b> → Send (untick "Notify").</li>
+        <li>Come back and tap <b>Find shared folders</b>.</li>
+      </ol>
+      <div class="row"><button class="primary" id="findBtn" onclick="findShared()">Find shared folders</button></div>
+      <ul id="shared"></ul>
+      <p class="muted" style="margin-top:14px">Or paste a folder link:</p>
+      <div class="row"><input id="link" placeholder="https://drive.google.com/drive/folders/…"></div>
+      <div class="row">
+        <select id="linkType" style="flex:1"><option value="MOVIES">Movies</option><option value="TV_SHOWS">TV Shows</option></select>
+        <button onclick="addLink()">Add folder</button>
+      </div>
+      <div id="folderMsg" class="msg"></div>
+    </section>
+
+    <section id="s3">
+      <h2><span class="num">3</span>Your library</h2>
+      <p id="scanStatus" class="muted"></p>
+      <ul id="library"></ul>
+      <div class="row"><button id="rescanBtn" onclick="rescan()">Rescan all</button></div>
+    </section>
+  </div>
+</main>
+<script>
+let PIN = new URLSearchParams(location.search).get('pin') || '';
+let state = null;
+const $ = id => document.getElementById(id);
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { 'X-Pin': PIN, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) { const err = new Error(data.error || ('Error ' + res.status)); err.status = res.status; throw err; }
+  return data;
+}
+function show(el, text, kind) { el.textContent = text; el.className = 'msg ' + kind; }
+function clear(el) { el.className = 'msg'; el.textContent = ''; }
+function typeLabel(t) { return t === 'TV_SHOWS' ? 'TV Shows' : 'Movies'; }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function setPin() { PIN = $('pinInput').value.trim(); start(); }
+
+async function start() {
+  try {
+    state = await api('/api/state');
+    $('pinBox').classList.add('hidden'); $('app').classList.remove('hidden');
+    render();
+  } catch (e) {
+    $('pinBox').classList.remove('hidden'); $('app').classList.add('hidden');
+    if (PIN) show($('pinMsg'), e.message, 'err');
+  }
+}
+
+function render() {
+  const s = state;
+  $('keyMissing').classList.toggle('hidden', s.hasKey);
+  $('keyPresent').classList.toggle('hidden', !s.hasKey);
+  $('email').textContent = s.email || '';
+  $('s1').classList.toggle('done', s.hasKey);
+  $('s2').classList.toggle('done', s.folders.length > 0);
+  $('s3').classList.toggle('done', s.folders.length > 0 && !s.scanning);
+  $('s2').style.opacity = s.hasKey ? 1 : .5;
+  $('findBtn').disabled = !s.hasKey;
+  const lib = $('library');
+  if (!s.folders.length) {
+    lib.innerHTML = '<li class="muted">No folders yet.</li>';
+  } else {
+    lib.innerHTML = s.folders.map(f => `
+      <li><div><div class="name">${esc(f.name)}</div>
+        <span class="tag ${f.type === 'TV_SHOWS' ? 'tv' : 'movies'}">${typeLabel(f.type)}</span>
+        <span class="muted">${f.error ? '⚠ ' + esc(f.error) : (f.videos != null ? f.videos + ' videos' : 'scanning…')}</span></div>
+        <button onclick="removeFolder('${esc(f.id)}')">Remove</button></li>`).join('');
+  }
+  $('scanStatus').textContent = s.scanning ? 'Scanning your folders… the TV updates as titles are found.'
+    : (s.lastError ? '⚠ ' + s.lastError : (s.folders.length ? 'All done. You can close this page and press Done on the TV.' : ''));
+  $('rescanBtn').disabled = s.scanning || !s.folders.length;
+}
+
+async function uploadKey() {
+  const f = $('keyFile').files[0];
+  if (!f) return show($('keyMsg'), 'Choose the .json key file first.', 'err');
+  $('keyBtn').disabled = true; show($('keyMsg'), 'Checking the key with Google…', 'ok');
+  try {
+    const text = await f.text();
+    state = await api('/api/key', { method: 'POST', body: text });
+    show($('keyMsg'), 'Key saved. Now share your folders with the address above.', 'ok');
+    render();
+  } catch (e) { show($('keyMsg'), e.message, 'err'); }
+  $('keyBtn').disabled = false;
+}
+function replaceKey() { $('keyMissing').classList.remove('hidden'); $('keyPresent').classList.add('hidden'); }
+async function copyEmail() {
+  try { await navigator.clipboard.writeText(state.email); show($('keyMsg'), 'Copied.', 'ok'); }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents($('email'));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    show($('keyMsg'), 'Selected — long-press to copy.', 'ok');
+  }
+}
+
+async function findShared() {
+  clear($('folderMsg')); $('findBtn').disabled = true;
+  try {
+    const { folders } = await api('/api/shared');
+    const ul = $('shared');
+    if (!folders.length) {
+      ul.innerHTML = '';
+      show($('folderMsg'), 'No shared folders found yet. Sharing can take a minute to show up — try again shortly.', 'err');
+    } else {
+      ul.innerHTML = folders.map(f => `
+        <li><span class="name">${esc(f.name)}</span>
+        ${f.type ? `<span class="tag ${f.type === 'TV_SHOWS' ? 'tv' : 'movies'}">Added as ${typeLabel(f.type)}</span>` :
+          `<span class="row" style="margin:0"><button onclick="addId('${esc(f.id)}','MOVIES')">+ Movies</button><button onclick="addId('${esc(f.id)}','TV_SHOWS')">+ TV Shows</button></span>`}
+        </li>`).join('');
+    }
+  } catch (e) { show($('folderMsg'), e.message, 'err'); }
+  $('findBtn').disabled = !state.hasKey;
+}
+async function addId(id, type) {
+  try {
+    state = await api('/api/folders', { method: 'POST', body: JSON.stringify({ input: id, type }) });
+    render(); findShared();
+    show($('folderMsg'), 'Added. Scanning has started.', 'ok');
+  } catch (e) { show($('folderMsg'), e.message, 'err'); }
+}
+async function addLink() {
+  const input = $('link').value.trim();
+  if (!input) return show($('folderMsg'), 'Paste a folder link first.', 'err');
+  try {
+    state = await api('/api/folders', { method: 'POST', body: JSON.stringify({ input, type: $('linkType').value }) });
+    $('link').value = ''; render();
+    show($('folderMsg'), 'Added. Scanning has started.', 'ok');
+  } catch (e) { show($('folderMsg'), e.message, 'err'); }
+}
+async function removeFolder(id) {
+  try { state = await api('/api/folders/remove', { method: 'POST', body: JSON.stringify({ id }) }); render(); }
+  catch (e) { alert(e.message); }
+}
+async function rescan() {
+  try { state = await api('/api/rescan', { method: 'POST', body: '{}' }); render(); } catch (e) { alert(e.message); }
+}
+
+setInterval(async () => {
+  if (!state) return;
+  try { state = await api('/api/state'); render(); } catch (e) {}
+}, 3000);
+start();
+</script>
+</body>
+</html>
