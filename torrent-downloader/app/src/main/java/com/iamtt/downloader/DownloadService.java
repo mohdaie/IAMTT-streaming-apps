@@ -38,7 +38,8 @@ public class DownloadService extends Service {
     }
     @Override public synchronized int onStartCommand(Intent intent,int flags,int startId) {
         if (intent != null && "PAUSE_ALL".equals(intent.getAction())) { store.pauseAll(); return START_NOT_STICKY; }
-        startForeground(NOTIFICATION,notification("Preparing downloads"),ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        if(Build.VERSION.SDK_INT>=29) startForeground(NOTIFICATION,notification("Preparing downloads"),ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        else startForeground(NOTIFICATION,notification("Preparing downloads"));
         if(!running) { running=true; worker.execute(this::runQueue); }
         return START_NOT_STICKY;
     }
