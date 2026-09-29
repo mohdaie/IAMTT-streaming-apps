@@ -30,6 +30,9 @@ public class MainActivity extends Activity {
     private String exporting;
     private JSONObject activeSeries;
     private List<JSONObject> currentTitles=new ArrayList<>();
+    private List<JSONObject> currentStreams=new ArrayList<>();
+    private LinearLayout sourceArea;
+    private String sourceQuality="All",sourcePublisher="All",sourceSize="All",sourceSort="Best peers";
     private final Map<String,TextView> statuses=new HashMap<>();
     private final Map<String,ProgressBar> bars=new HashMap<>();
     private final Map<String,String> renderedStates=new HashMap<>();
@@ -86,9 +89,10 @@ public class MainActivity extends Activity {
     private Button selectedButton(String label,boolean selected,Runnable action){
         Button b=button(label,action);b.setTextColor(selected?Color.BLACK:INK);b.setBackground(rounded(selected?Color.WHITE:CARD2,16));return b;
     }
-    private LinearLayout card(){
+    private LinearLayout card(){return card(body);}
+    private LinearLayout card(ViewGroup parent){
         LinearLayout c=column();c.setPadding(dp(14),dp(14),dp(14),dp(14));c.setBackground(rounded(CARD,18));
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(14);body.addView(c,p);return c;
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(14);parent.addView(c,p);return c;
     }
     private void note(String s){body.addView(text(s,14,MUTED));}
     private void title(String s){TextView t=text(s,30,INK);t.setTypeface(null,Typeface.BOLD);body.addView(t);}
@@ -276,22 +280,92 @@ public class MainActivity extends Activity {
 
     private void sources(String type,String id,String displayTitle){
         generation++;tab="Sources";int token=generation;body.removeAllViews();
+        sourceQuality="All";sourcePublisher="All";sourceSize="All";sourceSort="Best peers";currentStreams.clear();
         body.addView(button(type.equals("series")?"‹ Back to episodes":"‹ Back to movies",()->{if(type.equals("series")&&activeSeries!=null)episodes(activeSeries);else show("Discover");}));
-        title(displayTitle);TextView loading=text("Finding available sources…",14,MUTED);body.addView(loading);
+        title(displayTitle);note("Torrent health is a live swarm signal, not a guarantee. Prefer sources with more reported seeders.");
+        TextView loading=text("Finding available sources…",14,MUTED);body.addView(loading);
+        sourceArea=column();body.addView(sourceArea,new LinearLayout.LayoutParams(-1,-2));
         io.execute(()->{try{
             AddonClient.Results result=addons.streams(type,id);
             runOnUiThread(()->{
                 if(token!=generation||isDestroyed())return;body.removeView(loading);for(String e:result.errors)note(e);
-                if(result.items.isEmpty())note("No sources were returned for this title.");
-                for(JSONObject stream:result.items){
-                    LinearLayout c=card();c.addView(text(stream.optString("name",stream.optString("addonName")),17,INK));
-                    TextView d=text(stream.optString("description",stream.optString("title","")),13,MUTED);d.setMaxLines(6);d.setEllipsize(android.text.TextUtils.TruncateAt.END);c.addView(d);
-                    boolean torrent=stream.optString("infoHash").matches("(?i)[0-9a-f]{40}");
-                    if(torrent)c.addView(button("↓ Download this "+(type.equals("series")?"episode":"movie"),()->enqueue(stream,displayTitle)));
-                    else c.addView(text("Direct/debrid streams are not handled by this downloader build.",13,MUTED));
-                }
+                currentStreams=new ArrayList<>(result.items);
+                if(currentStreams.isEmpty())note("No sources were returned for this title.");
+                renderSourceArea(type,displayTitle);
             });
         }catch(Exception e){runOnUiThread(()->{if(token==generation)loading.setText("Source lookup failed. Go back and retry.");});}});
+    }
+
+    private void renderSourceArea(String type,String displayTitle){
+        if(sourceArea==null)return;sourceArea.removeAllViews();if(currentStreams.isEmpty())return;
+        LinearLayout r1=new LinearLayout(this),r2=new LinearLayout(this);
+        Button q=button("Quality · "+sourceQuality,()->chooseSourceQuality(type,displayTitle));
+        Button p=button("Source · "+sourcePublisher,()->chooseSourcePublisher(type,displayTitle));
+        r1.addView(q,new LinearLayout.LayoutParams(0,dp(46),1));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(0,dp(46),1);gp.leftMargin=dp(8);r1.addView(p,gp);
+        Button s=button("Size · "+sourceSize,()->chooseSourceSize(type,displayTitle));
+        Button sort=button("Sort · "+sourceSort,()->chooseSourceSort(type,displayTitle));
+        r2.addView(s,new LinearLayout.LayoutParams(0,dp(46),1));LinearLayout.LayoutParams gs=new LinearLayout.LayoutParams(0,dp(46),1);gs.leftMargin=dp(8);r2.addView(sort,gs);
+        sourceArea.addView(r1);LinearLayout.LayoutParams rowGap=new LinearLayout.LayoutParams(-1,-2);rowGap.topMargin=dp(8);sourceArea.addView(r2,rowGap);
+
+        List<JSONObject> list=new ArrayList<>();
+        for(JSONObject stream:currentStreams){
+            if(!"All".equals(sourceQuality)&&!sourceQuality.equals(Protocol.sourceQuality(stream)))continue;
+            if(!"All".equals(sourcePublisher)&&!sourcePublisher.equals(Protocol.sourcePublisher(stream)))continue;
+            if(!sourceSizeMatches(stream))continue;
+            list.add(stream);
+        }
+        list.sort((a,b)->{
+            if("Smallest".equals(sourceSort))return Long.compare(sizeSortValue(a),sizeSortValue(b));
+            if("Largest".equals(sourceSort))return Long.compare(sizeSortValue(b),sizeSortValue(a));
+            return Integer.compare(Protocol.sourceHealthRank(b),Protocol.sourceHealthRank(a));
+        });
+        TextView count=text(list.size()+" of "+currentStreams.size()+" sources",12,MUTED);count.setPadding(0,dp(12),0,dp(8));sourceArea.addView(count);
+        if(list.isEmpty()){sourceArea.addView(text("No torrent matches these filters.",14,MUTED));return;}
+        for(JSONObject stream:list)sourceCard(sourceArea,stream,type,displayTitle);
+    }
+
+    private long sizeSortValue(JSONObject stream){long n=Protocol.sourceSize(stream);return n<=0?Long.MAX_VALUE:n;}
+    private boolean sourceSizeMatches(JSONObject stream){
+        if("All".equals(sourceSize))return true;long n=Protocol.sourceSize(stream);if(n<=0)return false;
+        long gb=1073741824L;
+        if("< 1 GB".equals(sourceSize))return n<gb;
+        if("1–3 GB".equals(sourceSize))return n>=gb&&n<3*gb;
+        if("3–8 GB".equals(sourceSize))return n>=3*gb&&n<8*gb;
+        return n>=8*gb;
+    }
+
+    private void chooseSourceQuality(String type,String title){
+        LinkedHashSet<String> set=new LinkedHashSet<>();set.add("All");for(JSONObject s:currentStreams)set.add(Protocol.sourceQuality(s));
+        chooseSourceOption("Quality",new ArrayList<>(set),sourceQuality,v->{sourceQuality=v;renderSourceArea(type,title);});
+    }
+    private void chooseSourcePublisher(String type,String title){
+        TreeSet<String> names=new TreeSet<>(String.CASE_INSENSITIVE_ORDER);for(JSONObject s:currentStreams)names.add(Protocol.sourcePublisher(s));
+        List<String> values=new ArrayList<>();values.add("All");values.addAll(names);
+        chooseSourceOption("Torrent source",values,sourcePublisher,v->{sourcePublisher=v;renderSourceArea(type,title);});
+    }
+    private void chooseSourceSize(String type,String title){
+        chooseSourceOption("File size",Arrays.asList("All","< 1 GB","1–3 GB","3–8 GB","8+ GB"),sourceSize,v->{sourceSize=v;renderSourceArea(type,title);});
+    }
+    private void chooseSourceSort(String type,String title){
+        chooseSourceOption("Sort torrents",Arrays.asList("Best peers","Smallest","Largest"),sourceSort,v->{sourceSort=v;renderSourceArea(type,title);});
+    }
+    private interface ChoiceHandler{void set(String value);}
+    private void chooseSourceOption(String title,List<String> values,String selected,ChoiceHandler handler){
+        String[] labels=values.toArray(new String[0]);int checked=Math.max(0,values.indexOf(selected));
+        new AlertDialog.Builder(this).setTitle(title).setSingleChoiceItems(labels,checked,(d,which)->{handler.set(values.get(which));d.dismiss();}).setNegativeButton("Cancel",null).show();
+    }
+
+    private void sourceCard(ViewGroup parent,JSONObject stream,String type,String displayTitle){
+        LinearLayout c=card(parent);
+        String quality=Protocol.sourceQuality(stream),codec=Protocol.sourceCodec(stream),publisher=Protocol.sourcePublisher(stream);
+        long bytes=Protocol.sourceSize(stream);int seeds=Protocol.reportedSeeders(stream);String health=Protocol.sourceHealth(stream);
+        TextView head=text(quality+(codec.isEmpty()?"":" · "+codec)+(bytes>0?" · "+size(bytes):""),18,INK);head.setTypeface(null,Typeface.BOLD);c.addView(head);
+        c.addView(text("Source: "+publisher+"   ·   Reported seeders: "+(seeds>=0?seeds:"not reported")+"   ·   Health: "+health,13,seeds==0?0xFFFF9F0A:MUTED));
+        String raw=stream.optString("description",stream.optString("title",""));
+        if(!raw.isEmpty()){TextView d=text(raw,12,MUTED);d.setMaxLines(4);d.setEllipsize(android.text.TextUtils.TruncateAt.END);c.addView(d);}
+        boolean torrent=stream.optString("infoHash").matches("(?i)[0-9a-f]{40}");
+        if(torrent)c.addView(button((seeds==0?"Try anyway · ":"↓ ")+"Download this "+(type.equals("series")?"episode":"movie"),()->enqueue(stream,displayTitle)));
+        else c.addView(text("Direct/debrid streams are not handled by this downloader build.",13,MUTED));
     }
 
     private void enqueue(JSONObject stream,String title){
@@ -318,7 +392,17 @@ public class MainActivity extends Activity {
         refreshProgress();
     }
 
-    private String progress(DownloadStore.Item i){return i.state+" · "+size(i.done)+" / "+size(i.total)+"\n"+(i.speed>0?size(i.speed)+"/s · "+i.peers+" peers\n":"")+(i.detail==null?"":i.detail);}
+    private String progress(DownloadStore.Item i){
+        long total=i.total>0?i.total:i.expectedTotal;
+        String source=(i.quality==null||i.quality.isEmpty()?"":i.quality)+(i.codec==null||i.codec.isEmpty()?"":" · "+i.codec)
+            +(i.sourcePublisher==null||i.sourcePublisher.isEmpty()?"":" · "+i.sourcePublisher);
+        String seedText=i.reportedSeeds>=0?String.valueOf(i.reportedSeeds):"not reported";
+        return i.state+"\nDownloaded: "+size(i.done)+" / "+(total>0?size(total):"unknown")
+            +"\nSpeed: "+size(i.speed)+"/s"
+            +"\nPeers: "+i.peers+" connected · "+seedText+" reported"
+            +(source.isEmpty()?"":"\nSource: "+source)
+            +"\n"+(i.detail==null?"":i.detail);
+    }
     private static String size(long n){if(n<=0)return "0 MB";return String.format(Locale.US,n>=1073741824?"%.2f GB":"%.1f MB",n/(n>=1073741824?1073741824.0:1048576.0));}
 
     private void refreshProgress(){
@@ -327,7 +411,7 @@ public class MainActivity extends Activity {
             boolean controls=i.state.equals("Complete")||i.state.equals("Paused")||i.state.equals("Error");
             if(old==null||(!i.state.equals(old)&&(oldControls||controls))){show("Downloads");return;}
             TextView t=statuses.get(i.id);if(t!=null)t.setText(progress(i));ProgressBar b=bars.get(i.id);
-            if(b!=null){b.setIndeterminate(i.total==0&&!i.state.equals("Error")&&!i.state.equals("Paused"));b.setProgress(i.total>0?(int)Math.min(1000,1000*i.done/i.total):0);}
+            if(b!=null){long total=i.total>0?i.total:i.expectedTotal;b.setIndeterminate(total==0&&!i.state.equals("Error")&&!i.state.equals("Paused"));b.setProgress(total>0?(int)Math.min(1000,1000*i.done/total):0);}
         }
     }
 
