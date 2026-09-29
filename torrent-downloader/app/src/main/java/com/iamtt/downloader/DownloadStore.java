@@ -6,22 +6,27 @@ import java.util.*;
 
 public final class DownloadStore {
     public static final class Item {
-        public final String hash, title, magnet;
+        public final String id, hash, title, magnet;
         public final int requested;
         public volatile String state, detail, path = "";
         public volatile long done, total, speed;
         public volatile int peers;
+
         Item(String hash, String title, String magnet, int requested, String state) {
-            this.hash=hash; this.title=title; this.magnet=magnet; this.requested=requested; this.state=state; detail="";
+            this.hash=hash; this.title=title; this.magnet=magnet; this.requested=requested;
+            this.id=hash+":"+requested; this.state=state; detail="";
         }
     }
+
     private static DownloadStore instance;
     public static synchronized DownloadStore get(Context c) {
         if (instance == null) instance = new DownloadStore(c.getApplicationContext());
         return instance;
     }
+
     private final android.content.SharedPreferences prefs;
     private final LinkedHashMap<String,Item> items = new LinkedHashMap<>();
+
     private DownloadStore(Context c) {
         prefs = c.getSharedPreferences("downloads", Context.MODE_PRIVATE);
         try {
@@ -31,17 +36,23 @@ public final class DownloadStore {
                 Item item=new Item(j.getString("hash"),j.getString("title"),j.getString("magnet"),j.getInt("requested"),
                     "Complete".equals(j.optString("state")) ? "Complete" : "Paused");
                 item.path=j.optString("path"); item.done=j.optLong("done"); item.total=j.optLong("total");
-                items.put(item.hash,item);
+                items.put(item.id,item);
             }
         } catch (JSONException ignored) { /* Invalid stored jobs are never auto-started. */ }
     }
+
     public synchronized List<Item> all() { return new ArrayList<>(items.values()); }
-    public synchronized Item find(String hash) { return items.get(hash); }
+    public synchronized Item find(String id) { return items.get(id); }
+
     public synchronized Item add(JSONObject stream,String title) throws Exception {
         String magnet=Protocol.magnet(stream,title), hash=stream.getString("infoHash").toLowerCase(Locale.ROOT);
-        if (items.containsKey(hash)) throw new IllegalArgumentException("This torrent is already in Downloads.");
-        Item item=new Item(hash,title,magnet,Protocol.fileIndex(stream),"Queued"); items.put(hash,item); save(); return item;
+        int requested=Protocol.fileIndex(stream);
+        String id=hash+":"+requested;
+        if (items.containsKey(id)) throw new IllegalArgumentException("This file is already in Downloads.");
+        Item item=new Item(hash,title,magnet,requested,"Queued");
+        items.put(item.id,item); save(); return item;
     }
+
     public synchronized void save() {
         JSONArray a=new JSONArray();
         for(Item i:items.values()) try {
@@ -50,10 +61,12 @@ public final class DownloadStore {
         } catch(JSONException ignored) { }
         prefs.edit().putString("items",a.toString()).apply();
     }
+
     public synchronized void pauseAll() {
         for(Item i:items.values()) if (!i.state.equals("Complete")) {i.state="Paused";i.speed=0;}
         save();
     }
+
     public boolean wifiOnly() { return prefs.getBoolean("wifiOnly",true); }
     public void wifiOnly(boolean value) { prefs.edit().putBoolean("wifiOnly",value).apply(); }
 }
