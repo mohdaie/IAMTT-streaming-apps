@@ -118,7 +118,7 @@ public class MainActivity extends Activity {
     }
 
     private void showAddons(){
-        title("Addons");note("Connect catalogues and source addons. Settings stay on this device.");
+        brandBar();title("Addons");note("Connect catalogues and source addons. Settings stay on this device.");
         LinearLayout quick=card();quick.addView(text("Your sources",20,INK));
         quick.addView(button("Paste addon link",()->installDialog("")));
         quick.addView(button("Add Cinemeta catalogue",()->install(AddonClient.CATALOG)));
@@ -160,22 +160,23 @@ public class MainActivity extends Activity {
     }
 
     private void discover(){
-        title("Watch");
-        LinearLayout typeRow=new LinearLayout(this);typeRow.setPadding(0,dp(8),0,dp(12));
-        typeRow.addView(selectedButton("Movies",mediaType.equals("movie"),()->switchType("movie")),new LinearLayout.LayoutParams(0,dp(46),1));
+        brandBar();
+        title("Watch");note("Discover and download your favorite movies and TV shows.");
+
+        LinearLayout typeRow=new LinearLayout(this);typeRow.setPadding(0,dp(10),0,dp(12));
+        typeRow.addView(selectedButton("Movies",mediaType.equals("movie"),()->switchType("movie")),new LinearLayout.LayoutParams(0,dp(42),1));
         LinearLayout.LayoutParams gap=new LinearLayout.LayoutParams(dp(8),1);typeRow.addView(new Space(this),gap);
-        typeRow.addView(selectedButton("TV Shows",mediaType.equals("series"),()->switchType("series")),new LinearLayout.LayoutParams(0,dp(46),1));
+        typeRow.addView(selectedButton("TV Shows",mediaType.equals("series"),()->switchType("series")),new LinearLayout.LayoutParams(0,dp(42),1));
         body.addView(typeRow);
 
-        LinearLayout search=new LinearLayout(this);EditText field=new EditText(this);field.setSingleLine();field.setHint(mediaType.equals("series")?"Search TV shows":"Search movies");
-        field.setText(query);field.setTextColor(INK);field.setHintTextColor(MUTED);field.setBackground(rounded(CARD,16));field.setPadding(dp(14),0,dp(14),0);
-        search.addView(field,new LinearLayout.LayoutParams(0,dp(52),1));
+        EditText field=new EditText(this);field.setSingleLine();field.setHint("Search movies, TV shows, or genres…");
+        field.setText(query);field.setTextColor(INK);field.setHintTextColor(MUTED);field.setBackground(rounded(CARD2,14));field.setPadding(dp(16),0,dp(16),0);
+        body.addView(field,new LinearLayout.LayoutParams(-1,dp(48)));
         Runnable find=()->{query=field.getText().toString().trim();yearFilter=0;((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(field.getWindowToken(),0);show("Discover");};
         field.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);field.setOnEditorActionListener((v,a,e)->{find.run();return true;});
-        Button searchButton=button("Search",find);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(92),dp(52));sp.leftMargin=dp(8);search.addView(searchButton,sp);body.addView(search);
 
         if(addons.installed().length()==0){
-            LinearLayout c=card();c.addView(text("Start with your addons",20,INK));c.addView(text("Add Cinemeta for movie and TV artwork/metadata, then add a source addon.",14,MUTED));
+            LinearLayout c=card();c.addView(text("Start with your addons",19,INK));c.addView(text("Add Cinemeta for movie and TV artwork/metadata, then add a source addon.",14,MUTED));
             c.addView(button("Set up addons",()->show("Addons")));return;
         }
 
@@ -191,7 +192,7 @@ public class MainActivity extends Activity {
     }
 
     private void switchType(String type){
-        if(mediaType.equals(type))return;mediaType=type;query="";yearFilter=0;activeSeries=null;currentTitles.clear();show("Discover");
+        if(mediaType.equals(type))return;mediaType=type;query="";yearFilter=0;activeSeries=null;activeMedia=null;currentTitles.clear();show("Discover");
     }
 
     private void renderCatalogueControls(){
@@ -222,21 +223,30 @@ public class MainActivity extends Activity {
             int ya=Protocol.year(a),yb=Protocol.year(b);int cmp=Integer.compare(yb,ya);
             if(!sortNewest)cmp=-cmp;if(cmp!=0)return cmp;return a.optString("name").compareToIgnoreCase(b.optString("name"));
         });
-        section(mediaType.equals("series")?"TV Shows":"Movies");
         if(list.isEmpty()){note("Nothing matches this year filter.");return;}
-        for(JSONObject media:list)mediaCard(media);
+        if(!query.isEmpty()){
+            renderMediaRail("Results",list.subList(0,Math.min(30,list.size())));
+            return;
+        }
+        int cut=Math.min(12,list.size());
+        renderMediaRail(sortNewest?"Latest":"Browse",list.subList(0,cut));
+        if(list.size()>cut)renderMediaRail("More to watch",list.subList(cut,Math.min(cut+24,list.size())));
     }
 
-    private void mediaCard(JSONObject media){
-        LinearLayout c=card();c.setOrientation(LinearLayout.HORIZONTAL);c.setGravity(Gravity.TOP);
-        ImageView poster=posterView(112,168);c.addView(poster,new LinearLayout.LayoutParams(dp(112),dp(168)));loadImage(poster,media.optString("poster"),generation);
-        LinearLayout info=column();info.setPadding(dp(14),0,0,0);c.addView(info,new LinearLayout.LayoutParams(0,-2,1));
-        TextView name=text(media.optString("name","Untitled"),20,INK);name.setTypeface(null,Typeface.BOLD);info.addView(name);
-        int year=Protocol.year(media);String rating=media.optString("imdbRating","");
-        info.addView(text((year>0?String.valueOf(year):"")+(rating.isEmpty()?"":"   ★ "+rating),13,MUTED));
-        String description=media.optString("description","");if(!description.isEmpty()){TextView d=text(description,14,MUTED);d.setMaxLines(4);d.setEllipsize(android.text.TextUtils.TruncateAt.END);info.addView(d);}
-        if(mediaType.equals("series"))info.addView(button("Episodes",()->episodes(media)));
-        else info.addView(button("Download movie",()->{activeSeries=null;sources("movie",media.optString("id"),media.optString("name","Movie"));}));
+    private void renderMediaRail(String heading,List<JSONObject> items){
+        section(heading);
+        HorizontalScrollView strip=new HorizontalScrollView(this);strip.setHorizontalScrollBarEnabled(false);strip.setFillViewport(false);
+        LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setPadding(0,0,dp(4),dp(4));strip.addView(row);
+        for(JSONObject media:items){
+            LinearLayout tile=column();tile.setPadding(0,0,0,dp(4));tile.setClickable(true);
+            ImageView poster=posterView(118,176);tile.addView(poster,new LinearLayout.LayoutParams(dp(118),dp(176)));loadImage(poster,media.optString("poster"),generation);
+            TextView name=text(media.optString("name","Untitled"),14,INK);name.setTypeface(null,Typeface.BOLD);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);tile.addView(name);
+            int year=Protocol.year(media);String rating=media.optString("imdbRating","");
+            tile.addView(text((year>0?String.valueOf(year):"")+(rating.isEmpty()?"":" · ★ "+rating),11,MUTED));
+            tile.setOnClickListener(v->{activeMedia=media;if(mediaType.equals("series")){activeSeries=media;episodes(media);}else{activeSeries=null;sources("movie",media.optString("id"),media.optString("name","Movie"));}});
+            LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(dp(118),-2);tp.rightMargin=dp(10);row.addView(tile,tp);
+        }
+        body.addView(strip,new LinearLayout.LayoutParams(-1,-2));
     }
 
     private ImageView posterView(int w,int h){
