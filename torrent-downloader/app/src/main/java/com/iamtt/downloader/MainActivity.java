@@ -17,7 +17,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class MainActivity extends Activity {
-    private static final int INK=0xFFFFFFFF, MUTED=0xFF9B9BA1, BLUE=0xFF0A84FF, BG=0xFF000000, CARD=0xFF171717, CARD2=0xFF242424;
+    private static final int INK=0xFFFFFFFF, MUTED=0xFF8E8E93, BLUE=0xFF0A84FF, BG=0xFF000000, CARD=0xFF111214, CARD2=0xFF1C1D20, DIVIDER=0xFF2A2B2F;
     private AddonClient addons;
     private DownloadStore downloads;
     private LinearLayout root,body,nav;
@@ -28,7 +28,8 @@ public class MainActivity extends Activity {
     private boolean sortNewest=true;
     private int yearFilter=0,generation;
     private String exporting;
-    private JSONObject activeSeries;
+    private JSONObject activeSeries,activeMedia;
+    private String downloadFilter="All";
     private List<JSONObject> currentTitles=new ArrayList<>();
     private List<JSONObject> currentStreams=new ArrayList<>();
     private LinearLayout sourceArea;
@@ -36,6 +37,7 @@ public class MainActivity extends Activity {
     private final Map<String,TextView> statuses=new HashMap<>();
     private final Map<String,ProgressBar> bars=new HashMap<>();
     private final Map<String,String> renderedStates=new HashMap<>();
+    private final Map<String,Button> navButtons=new HashMap<>();
     private final Runnable ticker=new Runnable(){public void run(){if(tab.equals("Downloads"))refreshProgress();main.postDelayed(this,1000);}};
 
     @Override public void onCreate(Bundle state) {
@@ -49,16 +51,12 @@ public class MainActivity extends Activity {
         });
         setContentView(root);
 
-        LinearLayout header=column();header.setPadding(dp(20),dp(16),dp(20),dp(8));
-        TextView brand=text("IAMTT",23,INK);brand.setTypeface(null,Typeface.BOLD);header.addView(brand);
-        header.addView(text("Downloader  ·  v"+BuildConfig.VERSION_NAME,12,MUTED));root.addView(header);
-
-        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);body=column();body.setPadding(dp(18),dp(8),dp(18),dp(28));scroll.addView(body);
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);body=column();body.setPadding(dp(20),dp(12),dp(20),dp(28));scroll.addView(body);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
-        nav=new LinearLayout(this);nav.setPadding(dp(10),dp(8),dp(10),dp(10));nav.setBackgroundColor(0xFF0A0A0A);root.addView(nav);
+        nav=new LinearLayout(this);nav.setPadding(dp(10),dp(6),dp(10),dp(8));nav.setBackgroundColor(0xFF080808);root.addView(nav);
         for(String name:new String[]{"Discover","Downloads","Addons"}) {
-            Button b=navButton(name,()->show(name));nav.addView(b,new LinearLayout.LayoutParams(0,dp(50),1));
+            Button b=navButton(name,()->show(name));navButtons.put(name,b);nav.addView(b,new LinearLayout.LayoutParams(0,dp(48),1));
         }
 
         show(getIntent().getBooleanExtra("downloads",false)?"Downloads":"Discover");
@@ -84,10 +82,17 @@ public class MainActivity extends Activity {
         b.setBackground(rounded(CARD2,14));b.setOnClickListener(v->action.run());b.setPadding(dp(13),0,dp(13),0);return b;
     }
     private Button navButton(String label,Runnable action){
-        Button b=button(label,action);b.setTextColor(BLUE);b.setBackgroundColor(Color.TRANSPARENT);return b;
+        Button b=button(label,action);b.setTextColor(MUTED);b.setBackgroundColor(Color.TRANSPARENT);b.setTextSize(12);return b;
+    }
+    private void refreshNav(){
+        for(Map.Entry<String,Button> e:navButtons.entrySet()){
+            boolean active=e.getKey().equals(tab)||(tab.equals("Sources")||tab.equals("Episodes"))&&e.getKey().equals("Discover");
+            e.getValue().setTextColor(active?BLUE:MUTED);
+            e.getValue().setTypeface(null,active?Typeface.BOLD:Typeface.NORMAL);
+        }
     }
     private Button selectedButton(String label,boolean selected,Runnable action){
-        Button b=button(label,action);b.setTextColor(selected?Color.BLACK:INK);b.setBackground(rounded(selected?Color.WHITE:CARD2,16));return b;
+        Button b=button(label,action);b.setTextColor(INK);b.setBackground(rounded(selected?BLUE:CARD2,14));return b;
     }
     private LinearLayout card(){return card(body);}
     private LinearLayout card(ViewGroup parent){
@@ -100,8 +105,16 @@ public class MainActivity extends Activity {
     private void error(String s){new AlertDialog.Builder(this).setTitle("Could not finish").setMessage(s).setPositiveButton("OK",null).show();}
 
     private void show(String name){
-        tab=name;generation++;body.removeAllViews();statuses.clear();bars.clear();renderedStates.clear();
+        tab=name;generation++;body.removeAllViews();statuses.clear();bars.clear();renderedStates.clear();refreshNav();
         if(name.equals("Addons"))showAddons();else if(name.equals("Downloads"))showDownloads();else discover();
+    }
+
+    private void brandBar(){
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(0,dp(4),0,dp(18));
+        TextView logo=text("IAMTT",24,INK);logo.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));logo.setLetterSpacing(0.08f);
+        row.addView(logo,new LinearLayout.LayoutParams(0,dp(40),1));
+        TextView version=text("v"+BuildConfig.VERSION_NAME,11,MUTED);version.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);row.addView(version,new LinearLayout.LayoutParams(dp(90),dp(40)));
+        body.addView(row);
     }
 
     private void showAddons(){
