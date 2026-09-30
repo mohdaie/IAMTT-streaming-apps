@@ -54,4 +54,14 @@ class ConfigStore(context: Context) {
     fun removeFolder(id: String) = update { cfg ->
         cfg.copy(folders = cfg.folders.filterNot { it.id == id })
     }
+
+    /** Adds [profile], or replaces the one with the same id. */
+    fun saveProfile(profile: Profile) = update { cfg ->
+        val exists = cfg.profiles.any { it.id == profile.id }
+        cfg.copy(profiles = if (exists) cfg.profiles.map { if (it.id == profile.id) profile else it } else cfg.profiles + profile)
+    }
+
+    fun deleteProfile(id: String) = update { cfg ->
+        cfg.copy(profiles = cfg.profiles.filterNot { it.id == id })
+    }
 }

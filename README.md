@@ -21,14 +21,18 @@ Google Drive (only the folders you share)  ──Drive API, byte ranges──▶
 - **Stricter option:** instead of signing in, upload a Google *service account* key from the phone
   and share only your movie folders with it, so Google itself enforces that the app sees nothing else.
   The key is stored only on the TV, never in this repo or the APK.
-- **Remote or touch:** made for a Google TV remote, but it also works with touch on Android phones
-  and tablets, where the folder picker opens right inside the app.
+- **Remote or touch:** made for a Google TV remote, but it also works on Android phones and tablets,
+  upright or sideways, with a streaming-app style home: a featured title and rows of posters.
+  The folder picker opens right inside the app.
+- **Profiles:** the app starts with "Who's watching?". Each profile has a name, a picture (a built-in
+  avatar, or a photo on phones) and its own Continue Watching.
 - **Playback:** Media3 ExoPlayer streams from the Drive API with HTTP range requests, so
   playback starts fast, seeking works, and nothing is downloaded in full.
 
 ## Roadmap
 
 - [x] **Phase 1** – setup page, folder-only scanning, basic library rows, streaming playback, resume position
+- [x] **Profiles and phone layout** – "Who's watching?" profiles with pictures, per-profile Continue Watching, portrait phone home
 - [ ] **Phase 2** – file-name parsing (title/year, SxxEyy) and TMDB posters, plots, cast
 - [ ] **Phase 3** – Netflix/Nuvio-style home: hero banner, Continue Watching, Recently Added, genres, detail pages, search
 - [ ] **Phase 4** – subtitles (.srt next to videos), audio track picker, auto-play next episode

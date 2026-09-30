@@ -13,6 +13,17 @@ data class LibraryFolder(
     val type: FolderType,
 )
 
+/** Someone who watches: their own name, picture and Continue Watching row. */
+@Serializable
+data class Profile(
+    val id: String,
+    val name: String,
+    /** Which built-in avatar to show when there's no photo. */
+    val avatar: Int = 0,
+    /** Set when the picture is a photo; changes whenever the photo does, so screens reload it. */
+    val photoVersion: Long? = null,
+)
+
 @Serializable
 data class AppConfig(
     /** Email of the Google account on this TV that the app signed in with. */
@@ -21,6 +32,7 @@ data class AppConfig(
     val serviceAccountJson: String? = null,
     val serviceAccountEmail: String? = null,
     val folders: List<LibraryFolder> = emptyList(),
+    val profiles: List<Profile> = emptyList(),
 ) {
     /** Only one way of reaching Drive is active at a time; signing in with Google takes precedence. */
     val usesGoogleAccount: Boolean get() = !googleAccount.isNullOrBlank()

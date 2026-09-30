@@ -1,7 +1,5 @@
 package com.iamtt.streaming.ui
 
-import android.content.pm.PackageManager
-import android.content.res.Configuration
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -31,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -53,7 +51,6 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
-    val context = LocalContext.current
     val config by app.config.config.collectAsStateWithLifecycle()
     val library by app.library.state.collectAsStateWithLifecycle()
 
@@ -82,11 +79,7 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
     val url = if (port != null && ip != null) "http://$ip:$port/?pin=$pin" else null
 
     // Phones and tablets can pick folders on their own screen; TVs use the QR code and a phone.
-    val isTv = remember {
-        val uiMode = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
-        uiMode == Configuration.UI_MODE_TYPE_TELEVISION ||
-            context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
-    }
+    val isTv = rememberIsTv()
     var pickerOpen by remember { mutableStateOf(false) }
     val openHere: () -> Unit = { pickerOpen = true }
     val pickerPort = port
@@ -114,135 +107,152 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
     ) {
         // A phone held sideways is much shorter than a TV screen, so shrink the QR code to fit.
         val compact = maxHeight < 480.dp
-        val qrSize = (maxHeight - if (compact) 200.dp else 250.dp).coerceIn(140.dp, 320.dp)
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = if (compact) 32.dp else 56.dp, vertical = if (compact) 16.dp else 40.dp),
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 32.dp else 48.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                Text("IAMTT", color = IamttRed, fontSize = 40.sp, fontWeight = FontWeight.Black)
-                Text("Set up", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    if (isTv) "Sign in with the Google account that has your movies, then scan the QR code with " +
-                        "your phone (on the same Wi-Fi) to choose which Drive folders to use. " +
-                        "Only those folders are ever scanned."
-                    else "Sign in with the Google account that has your movies, then choose which Drive " +
-                        "folders to use. Only those folders are ever scanned.",
-                    color = IamttMuted, fontSize = 18.sp,
-                )
-                Spacer(Modifier.height(if (compact) 16.dp else 28.dp))
+        val narrow = maxWidth < 600.dp
+        val qrSize = if (narrow) (maxWidth - 120.dp).coerceIn(140.dp, 240.dp)
+        else (maxHeight - if (compact) 200.dp else 250.dp).coerceIn(140.dp, 320.dp)
+        val steps: @Composable () -> Unit = {
+            IamttLogo(height = if (compact) 44.dp else 56.dp)
+            Text("Set up", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                if (isTv) "Sign in with the Google account that has your movies, then scan the QR code with " +
+                    "your phone (on the same Wi-Fi) to choose which Drive folders to use. " +
+                    "Only those folders are ever scanned."
+                else "Sign in with the Google account that has your movies, then choose which Drive " +
+                    "folders to use. Only those folders are ever scanned.",
+                color = IamttMuted, fontSize = 18.sp,
+            )
+            Spacer(Modifier.height(if (compact) 16.dp else 28.dp))
 
-                StatusLine(
-                    done = config.hasAccess,
-                    text = when {
-                        config.usesGoogleAccount -> "Signed in as ${config.googleAccount}"
-                        config.hasKey -> "Using service account ${config.serviceAccountEmail}"
-                        else -> "Step 1: sign in with Google"
-                    },
-                )
-                Row(modifier = Modifier.padding(start = 34.dp, top = 6.dp, bottom = 8.dp)) {
-                    val label = when {
-                        signIn.busy -> "Signing in…"
-                        config.usesGoogleAccount -> "Switch account"
-                        else -> "Sign in with Google"
-                    }
-                    val modifier = Modifier.focusRequester(signInFocus).tapToClick(onClick = signInClick)
-                    if (config.hasAccess) {
-                        OutlinedButton(onClick = signInClick, modifier = modifier) { Text(label) }
-                    } else {
-                        Button(onClick = signInClick, modifier = modifier) { Text(label) }
-                    }
+            StatusLine(
+                done = config.hasAccess,
+                text = when {
+                    config.usesGoogleAccount -> "Signed in as ${config.googleAccount}"
+                    config.hasKey -> "Using service account ${config.serviceAccountEmail}"
+                    else -> "Step 1: sign in with Google"
+                },
+            )
+            Row(modifier = Modifier.padding(start = 34.dp, top = 6.dp, bottom = 8.dp)) {
+                val label = when {
+                    signIn.busy -> "Signing in…"
+                    config.usesGoogleAccount -> "Switch account"
+                    else -> "Sign in with Google"
                 }
-                signIn.error?.let { Warning(it) }
-                StatusLine(
-                    done = config.folders.isNotEmpty(),
-                    text = when {
-                        config.folders.isNotEmpty() -> "${config.folders.size} folder(s) added"
-                        isTv -> "Step 2: scan the QR code to add your Movies / TV Shows folders"
-                        else -> "Step 2: add your Movies / TV Shows folders"
-                    },
-                )
-                if (!isTv) {
-                    Row(modifier = Modifier.padding(start = 34.dp, top = 6.dp, bottom = 8.dp)) {
-                        val enabled = port != null && config.hasAccess
-                        OutlinedButton(
-                            onClick = openHere,
-                            enabled = enabled,
-                            modifier = Modifier.tapToClick(enabled, openHere),
-                        ) { Text("Choose folders here") }
-                    }
-                }
-                config.folders.forEach { f ->
-                    val scan = library.snapshot.scans.firstOrNull { it.folder.id == f.id }
-                    val detail = when {
-                        scan?.error != null -> "⚠ ${scan.error}"
-                        scan != null -> "${scan.videos.size} videos"
-                        library.scanning && library.scanningFolder == f.name -> "scanning… ${library.foundSoFar} found"
-                        else -> "waiting to scan"
-                    }
-                    val type = if (f.type == FolderType.TV_SHOWS) "TV Shows" else "Movies"
-                    Text(
-                        "      •  ${f.name}  ($type) — $detail",
-                        color = Color(0xFFD8D8DE), fontSize = 17.sp,
-                        modifier = Modifier.padding(vertical = 2.dp),
-                    )
-                }
-                Spacer(Modifier.height(if (compact) 16.dp else 28.dp))
-                Button(
-                    onClick = onDone,
-                    enabled = config.isReady,
-                    modifier = Modifier.focusRequester(doneFocus).tapToClick(config.isReady, onDone),
-                ) {
-                    Text(if (config.isReady) "Done — go to my library" else "Waiting for setup…")
+                val modifier = Modifier.focusRequester(signInFocus).tapToClick(onClick = signInClick)
+                if (config.hasAccess) {
+                    OutlinedButton(onClick = signInClick, modifier = modifier) { Text(label) }
+                } else {
+                    Button(onClick = signInClick, modifier = modifier) { Text(label) }
                 }
             }
-
+            signIn.error?.let { Warning(it) }
+            StatusLine(
+                done = config.folders.isNotEmpty(),
+                text = when {
+                    config.folders.isNotEmpty() -> "${config.folders.size} folder(s) added"
+                    isTv -> "Step 2: scan the QR code to add your Movies / TV Shows folders"
+                    else -> "Step 2: add your Movies / TV Shows folders"
+                },
+            )
+            if (!isTv) {
+                Row(modifier = Modifier.padding(start = 34.dp, top = 6.dp, bottom = 8.dp)) {
+                    val enabled = port != null && config.hasAccess
+                    OutlinedButton(
+                        onClick = openHere,
+                        enabled = enabled,
+                        modifier = Modifier.tapToClick(enabled, openHere),
+                    ) { Text("Choose folders here") }
+                }
+            }
+            config.folders.forEach { f ->
+                val scan = library.snapshot.scans.firstOrNull { it.folder.id == f.id }
+                val detail = when {
+                    scan?.error != null -> "⚠ ${scan.error}"
+                    scan != null -> "${scan.videos.size} videos"
+                    library.scanning && library.scanningFolder == f.name -> "scanning… ${library.foundSoFar} found"
+                    else -> "waiting to scan"
+                }
+                val type = if (f.type == FolderType.TV_SHOWS) "TV Shows" else "Movies"
+                Text(
+                    "      •  ${f.name}  ($type) — $detail",
+                    color = Color(0xFFD8D8DE), fontSize = 17.sp,
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+            }
+            Spacer(Modifier.height(if (compact) 16.dp else 28.dp))
+            Button(
+                onClick = onDone,
+                enabled = config.isReady,
+                modifier = Modifier.focusRequester(doneFocus).tapToClick(config.isReady, onDone),
+            ) {
+                Text(if (config.isReady) "Done — go to my library" else "Waiting for setup…")
+            }
+        }
+        val qrPanel: @Composable () -> Unit = {
+            val qr = remember(url) { url?.let { runCatching { qrBitmap(it) }.getOrNull() } }
+            Box(
+                modifier = Modifier
+                    .size(qrSize)
+                    .background(Color.White, RoundedCornerShape(16.dp))
+                    .padding(if (compact) 10.dp else 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (qr != null) {
+                    Image(bitmap = qr, contentDescription = "Setup QR code", modifier = Modifier.fillMaxSize())
+                } else {
+                    Text(
+                        serverError ?: when {
+                            port == null -> "Starting…"
+                            isTv -> "The TV isn't connected to your home network."
+                            else -> "Not on Wi-Fi. Use \"Choose folders here\", or join Wi-Fi to use another phone."
+                        },
+                        color = Color.Black, fontSize = 15.sp, textAlign = TextAlign.Center,
+                    )
+                }
+            }
+            Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
+            Text(
+                "Scan to choose folders, or open this address on your phone:",
+                color = IamttMuted, fontSize = 15.sp, textAlign = TextAlign.Center,
+            )
+            Text(
+                url?.substringBefore("/?") ?: "—",
+                color = Color.White, fontSize = 20.sp, fontFamily = FontFamily.Monospace,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text("PIN", color = IamttMuted, fontSize = 15.sp)
+            Text(pin, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
+        }
+        if (narrow) {
+            // A phone held upright: steps first, the QR code (for another phone) underneath.
             Column(
                 modifier = Modifier
-                    .width(maxOf(qrSize + 40.dp, 280.dp))
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
             ) {
-                val qr = remember(url) { url?.let { runCatching { qrBitmap(it) }.getOrNull() } }
-                Box(
+                steps()
+                Spacer(Modifier.height(32.dp))
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) { qrPanel() }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = if (compact) 32.dp else 56.dp, vertical = if (compact) 16.dp else 40.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 32.dp else 48.dp),
+            ) {
+                Column(
                     modifier = Modifier
-                        .size(qrSize)
-                        .background(Color.White, RoundedCornerShape(16.dp))
-                        .padding(if (compact) 10.dp else 16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (qr != null) {
-                        Image(bitmap = qr, contentDescription = "Setup QR code", modifier = Modifier.fillMaxSize())
-                    } else {
-                        Text(
-                            serverError ?: when {
-                                port == null -> "Starting…"
-                                isTv -> "The TV isn't connected to your home network."
-                                else -> "Not on Wi-Fi. Use \"Choose folders here\", or join Wi-Fi to use another phone."
-                            },
-                            color = Color.Black, fontSize = 15.sp, textAlign = TextAlign.Center,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
-                Text(
-                    "Scan to choose folders, or open this address on your phone:",
-                    color = IamttMuted, fontSize = 15.sp, textAlign = TextAlign.Center,
-                )
-                Text(
-                    url?.substringBefore("/?") ?: "—",
-                    color = Color.White, fontSize = 20.sp, fontFamily = FontFamily.Monospace,
-                )
-                Spacer(Modifier.height(10.dp))
-                Text("PIN", color = IamttMuted, fontSize = 15.sp)
-                Text(pin, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) { steps() }
+                Column(
+                    modifier = Modifier
+                        .width(maxOf(qrSize + 40.dp, 280.dp))
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) { qrPanel() }
             }
         }
     }
