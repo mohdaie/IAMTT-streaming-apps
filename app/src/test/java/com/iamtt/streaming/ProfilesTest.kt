@@ -2,6 +2,7 @@ package com.iamtt.streaming
 
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -33,8 +34,8 @@ class ProfilesTest {
             compose.waitForIdle()
 
             assertEquals(listOf("Izreen"), app.config.current.profiles.map { it.name })
-            compose.onNodeWithText("Play").assertExists() // the featured title's button
-            compose.onNodeWithText("Recently Added").assertExists()
+            compose.onNodeWithText("More info").assertExists() // the featured title's buttons
+            compose.onNodeWithText("Movies", substring = false).assertExists()
         }
     }
 
@@ -55,6 +56,19 @@ class ProfilesTest {
             compose.onNodeWithText("Daddy").performClick()
             compose.waitForIdle()
             assertEquals(0, compose.onAllNodesWithText("Continue Watching", substring = true).fetchSemanticsNodes().size)
+        }
+    }
+
+    @Test
+    fun aShowOpensItsPageWithEpisodes() {
+        SampleLibrary.install(listOf(Profile("profileAisya", "Aisya", avatar = 5)))
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText("Aisya").performClick()
+            compose.onAllNodesWithText("Breaking Bad").onLast().performClick()
+            compose.waitForIdle()
+            compose.onNodeWithText("Play S1:E1").assertExists()
+            compose.onNodeWithText("1. Pilot").assertExists()               // episode names from the details
+            compose.onNodeWithText("2. Cat's in the Bag...").assertExists()
         }
     }
 }

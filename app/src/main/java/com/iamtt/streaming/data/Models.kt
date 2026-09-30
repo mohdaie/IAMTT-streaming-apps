@@ -53,6 +53,8 @@ data class VideoFile(
     val durationMs: Long? = null,
     val width: Int? = null,
     val height: Int? = null,
+    /** Subtitle files found next to this video (or in a "Subs" folder beside it). */
+    val subtitles: List<SubtitleFile> = emptyList(),
 ) {
     val displayName: String
         get() = name.substringBeforeLast('.', name)
@@ -61,6 +63,10 @@ data class VideoFile(
             .replace(Regex("\\s+"), " ")
             .trim()
 }
+
+/** A subtitle file in Drive; [language] is an ISO code when the file name gives one ("en", "ms"). */
+@Serializable
+data class SubtitleFile(val id: String, val name: String, val label: String, val language: String? = null)
 
 @Serializable
 data class FolderScan(

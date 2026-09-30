@@ -2,6 +2,7 @@ package com.iamtt.streaming.drive
 
 import com.iamtt.streaming.data.AppJson
 import com.iamtt.streaming.data.LibraryFolder
+import com.iamtt.streaming.data.Subtitles
 import com.iamtt.streaming.data.VideoFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -142,10 +143,11 @@ class DriveClient(private val auth: DriveAuth, private val base: OkHttpClient) {
         get(url, About.serializer(), token).user ?: DriveUser()
     }
 
-    /** Recursively lists every video under [folder] (and only under it). */
+    /** Recursively lists every video under [folder] (and only under it), with its subtitle files. */
     suspend fun scan(folder: LibraryFolder, onProgress: (Int) -> Unit = {}): List<VideoFile> = coroutineScope {
         val permits = Semaphore(6)
         val found = java.util.concurrent.ConcurrentLinkedQueue<VideoFile>()
+        val subtitles = java.util.concurrent.ConcurrentLinkedQueue<Subtitles.Found>()
         val visited = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
         suspend fun walk(folderId: String, path: String, depth: Int) {
@@ -172,6 +174,7 @@ class DriveClient(private val auth: DriveAuth, private val base: OkHttpClient) {
                         width = f.videoMediaMetadata?.width,
                         height = f.videoMediaMetadata?.height,
                     )
+                    Subtitles.isSubtitle(f.name) -> subtitles += Subtitles.Found(f.id, f.name, path)
                 }
             }
             onProgress(found.size)
@@ -179,7 +182,8 @@ class DriveClient(private val auth: DriveAuth, private val base: OkHttpClient) {
         }
 
         walk(folder.id, "", 0)
-        found.sortedWith(compareBy<VideoFile>({ it.path.lowercase() }, { it.name.lowercase() }))
+        Subtitles.attach(found.toList(), subtitles.toList())
+            .sortedWith(compareBy<VideoFile>({ it.path.lowercase() }, { it.name.lowercase() }))
     }
 
     private fun listAll(query: String, orderBy: String): List<DriveFile> {

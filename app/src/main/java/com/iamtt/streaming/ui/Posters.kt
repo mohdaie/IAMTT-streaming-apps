@@ -115,10 +115,3 @@ fun WatchBar(fraction: Float, modifier: Modifier = Modifier) {
         )
     }
 }
-
-/** How far into [item] the profile got, 0..1, when that's known. */
-fun HomeItem.watchedFraction(): Float? {
-    val p = progress ?: return null
-    val total = p.durationMs.takeIf { it > 0 } ?: video.durationMs ?: return null
-    return if (total > 0) (p.positionMs.toFloat() / total).coerceIn(0f, 1f) else null
-}

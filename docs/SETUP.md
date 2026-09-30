@@ -58,7 +58,8 @@ app and press **Switch account**.
 
 1. With your phone on the **same Wi-Fi**, scan the QR code on the TV (or type the address and PIN).
 2. Under **Choose your folders**, browse **My Drive** or **Shared with me**. Tap a folder to
-   look inside it, then tap **+ Movies** or **+ TV Shows** next to the folder you want.
+   look inside it, then tap **+ Add** next to the folder you want (or inside it, on "This folder").
+   Shows and movies can share a folder: IAMTT sorts them by file name.
    You can also paste a folder link instead.
 3. Scanning starts straight away and the TV shows the count as titles are found.
    When it's done, press **Done** on the TV.
@@ -71,10 +72,20 @@ IAMTT also works with touch. Open the APK link from step 2 in the phone's browse
 Then tap **Sign in with Google**, followed by **Choose folders here**: the folder picker opens inside
 the app (no Wi-Fi needed). Pick your folders, then tap **Done** at the top and **Done** again.
 
-## Recommended folder layout
+## Naming your files
 
-Scanning works with any layout, but Phase 2 (posters and episode info) matches titles
-from file names, so this layout gives the best results:
+IAMTT works out by itself which files are TV episodes and which are movies, from their names,
+whatever folder they're in. It then finds posters, descriptions and episode names automatically
+(TVmaze for shows, Wikipedia for movies). These names work best:
+
+- Episodes: `Show Name - S01E01 - Episode Title.mkv`, `Show.Name.S01E01.1080p.mkv`, `Show 1x01.mkv`,
+  or `Show Name/Season 1/Episode 1.mkv`
+- Movies: `Movie Title (2010).mkv` or `Movie.Title.2010.1080p.mkv` (the year helps find the right poster)
+- Subtitles: put `.srt`, `.vtt` or `.ass` files next to the video with the same name, optionally with a
+  language, e.g. `Movie Title (2010).en.srt` and `Movie Title (2010).ms.srt`, or in a `Subs` folder beside it.
+  They're switched on automatically; use the subtitles button in the player to change or turn them off.
+
+For example:
 
 ```
 Movies/
