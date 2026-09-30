@@ -68,8 +68,8 @@ Only the folders you add are scanned. To change them later, open **Settings** in
 ## On an Android phone or tablet
 
 IAMTT also works with touch. Open the APK link from step 2 in the phone's browser and install it.
-Then tap **Sign in with Google**, followed by **Choose folders here**: the folder picker opens in the
-phone's browser (no Wi-Fi needed). Pick your folders, switch back to IAMTT and tap **Done**.
+Then tap **Sign in with Google**, followed by **Choose folders here**: the folder picker opens inside
+the app (no Wi-Fi needed). Pick your folders, then tap **Done** at the top and **Done** again.
 
 ## Recommended folder layout
 
@@ -111,7 +111,7 @@ replaces the key.
 
 | Problem | Fix |
 |---|---|
-| "Google sign-in isn't set up for this app yet" | The Android OAuth client is missing or has a typo. Check the package name and SHA-1 in step 1.4, then wait 5 minutes. |
+| "Google sign-in isn't set up for this app yet", or `UNREGISTERED_ON_API_CONSOLE` | The Android OAuth client is missing or has a typo. Check the package name and SHA-1 in step 1.4, that its type is **Android**, and that it's in the same project as the consent screen. Then wait 5 minutes. |
 | "Access blocked: IAMTT has not completed the Google verification process" | Add your Gmail as a test user (step 1.3) or publish the app. |
 | "Google hasn't verified this app" | Expected for your own app. Tap **Advanced → Go to IAMTT**. |
 | "Google sign-in … has expired" | Open **Settings** and press **Switch account**. If this happens weekly, publish the app (see step 1). |

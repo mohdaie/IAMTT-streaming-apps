@@ -15,6 +15,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.iamtt.streaming.IamttApp
+import com.iamtt.streaming.drive.DriveException
 import com.iamtt.streaming.drive.GoogleAccountAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,11 +74,14 @@ fun rememberGoogleSignIn(app: IamttApp): GoogleSignIn {
     }
 
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
-        if (res.resultCode != Activity.RESULT_OK) {
-            fail(Exception("Sign-in was cancelled."))
+        // Google's screen also closes as "cancelled" when the Cloud setup is wrong; the returned
+        // intent carries the real status, so read it whatever the result code says.
+        val data = res.data
+        if (data == null) {
+            fail(DriveException(GoogleAccountAuth.CANCELLED))
         } else {
             try {
-                finish(state.pendingAccount, google.resultFromIntent(res.data))
+                finish(state.pendingAccount, google.resultFromIntent(data))
             } catch (e: Exception) {
                 fail(e)
             }

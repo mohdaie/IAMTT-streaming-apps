@@ -3,6 +3,8 @@ package com.iamtt.streaming
 import android.app.Application
 import com.iamtt.streaming.data.ConfigStore
 import com.iamtt.streaming.data.LibraryRepository
+import com.iamtt.streaming.data.ProfilePhotos
+import com.iamtt.streaming.data.WatchHistory
 import com.iamtt.streaming.drive.DriveAuth
 import com.iamtt.streaming.drive.DriveClient
 import com.iamtt.streaming.drive.GoogleAccountAuth
@@ -23,6 +25,10 @@ class IamttApp : Application() {
         private set
     lateinit var library: LibraryRepository
         private set
+    lateinit var history: WatchHistory
+        private set
+    lateinit var photos: ProfilePhotos
+        private set
 
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -40,5 +46,7 @@ class IamttApp : Application() {
         )
         drive = DriveClient(auth, baseHttp)
         library = LibraryRepository(this, drive, config, appScope)
+        history = WatchHistory(this)
+        photos = ProfilePhotos(this)
     }
 }

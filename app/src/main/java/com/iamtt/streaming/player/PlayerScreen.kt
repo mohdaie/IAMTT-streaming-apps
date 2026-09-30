@@ -1,6 +1,9 @@
 package com.iamtt.streaming.player
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -22,6 +25,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -39,6 +45,7 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
 import com.iamtt.streaming.IamttApp
 import com.iamtt.streaming.data.VideoFile
+import com.iamtt.streaming.ui.rememberIsTv
 
 /**
  * Streams a video straight from Google Drive. ExoPlayer asks Drive for byte ranges,
@@ -46,8 +53,9 @@ import com.iamtt.streaming.data.VideoFile
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(app: IamttApp, video: VideoFile, onExit: () -> Unit) {
+fun PlayerScreen(app: IamttApp, profileId: String, video: VideoFile, onExit: () -> Unit) {
     val context = LocalContext.current
+    val history = app.history
     var error by remember { mutableStateOf<String?>(null) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
 
@@ -60,7 +68,7 @@ fun PlayerScreen(app: IamttApp, video: VideoFile, onExit: () -> Unit) {
                     .setMediaMetadata(MediaMetadata.Builder().setTitle(video.displayName).build())
                     .build()
             )
-            val resumeAt = Positions.get(context, video.id)
+            val resumeAt = history.resumeAt(profileId, video.id)
             if (resumeAt > 0) seekTo(resumeAt)
             playWhenReady = true
             prepare()
@@ -74,13 +82,13 @@ fun PlayerScreen(app: IamttApp, video: VideoFile, onExit: () -> Unit) {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) Positions.clear(context, video.id)
+                if (state == Player.STATE_ENDED) history.clear(profileId, video.id)
             }
         }
         player.addListener(listener)
         onDispose {
             if (player.playbackState != Player.STATE_ENDED) {
-                Positions.save(context, video.id, player.currentPosition, player.duration)
+                history.save(profileId, video.id, player.currentPosition, player.duration)
             }
             player.removeListener(listener)
             player.release()
@@ -93,11 +101,28 @@ fun PlayerScreen(app: IamttApp, video: VideoFile, onExit: () -> Unit) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
                 player.pause()
-                Positions.save(context, video.id, player.currentPosition, player.duration)
+                history.save(profileId, video.id, player.currentPosition, player.duration)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // On a phone, play sideways and full screen like other video apps; put things back afterwards.
+    val isTv = rememberIsTv()
+    if (!isTv) {
+        DisposableEffect(Unit) {
+            val activity = context.findActivity()
+            val previous = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            val bars = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+            bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars?.hide(WindowInsetsCompat.Type.systemBars())
+            onDispose {
+                bars?.show(WindowInsetsCompat.Type.systemBars())
+                activity?.requestedOrientation = previous
+            }
+        }
     }
 
     BackHandler {
@@ -137,7 +162,7 @@ fun PlayerScreen(app: IamttApp, video: VideoFile, onExit: () -> Unit) {
             ) {
                 Text("Can't play this video", color = Color.White, fontSize = 26.sp)
                 Text(message, color = Color(0xFFBBBBC2), fontSize = 17.sp, modifier = Modifier.padding(top = 10.dp))
-                Text("Press Back to return", color = Color(0xFF8A8A92), fontSize = 15.sp, modifier = Modifier.padding(top = 18.dp))
+                Text("Go back to return", color = Color(0xFF8A8A92), fontSize = 15.sp, modifier = Modifier.padding(top = 18.dp))
             }
         }
     }
@@ -167,11 +192,17 @@ private fun describe(e: PlaybackException): String {
         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
             "Google Drive refused the stream. If this keeps happening the file may have hit Drive's daily download limit."
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Network problem — check the TV's internet connection."
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Network problem — check the internet connection."
         PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ->
-            "This TV can't decode this video/audio format (${e.errorCodeName})."
+            "This device can't decode this video/audio format (${e.errorCodeName})."
         PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> "This file type isn't supported."
         else -> "${e.errorCodeName}: ${cause.message ?: e.message ?: ""}"
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
