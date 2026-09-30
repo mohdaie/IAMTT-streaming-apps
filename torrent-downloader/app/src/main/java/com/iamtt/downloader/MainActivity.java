@@ -188,13 +188,14 @@ public class MainActivity extends Activity {
         }
 
         TextView loading=text(mediaType.equals("series")?"Loading TV shows…":"Loading movies…",14,MUTED);loading.setPadding(0,dp(18),0,0);body.addView(loading);
-        final int token=generation;
+        final int token=generation;final String requestedType=mediaType,requestedQuery=query,requestedGenre=serverGenre;final int requestedIndex=catalogueIndex;
         io.execute(()->{try{
-            catalogueChoices=addons.catalogs(mediaType,!query.isEmpty());
-            if(catalogueIndex>=catalogueChoices.size())catalogueIndex=0;
-            AddonClient.Results result=catalogueChoices.isEmpty()?new AddonClient.Results():addons.catalog(catalogueChoices.get(catalogueIndex),mediaType,query,0,serverGenre);
+            List<JSONObject> choices=addons.catalogs(requestedType,!requestedQuery.isEmpty());
+            int index=requestedIndex>=choices.size()?0:requestedIndex;
+            String genre=requestedGenre.isEmpty()&&!choices.isEmpty()?AddonClient.defaultGenre(choices.get(index)):requestedGenre;
+            AddonClient.Results result=choices.isEmpty()?new AddonClient.Results():addons.catalog(choices.get(index),requestedType,requestedQuery,0,genre);
             runOnUiThread(()->{
-                if(token!=generation||isDestroyed())return;body.removeView(loading);currentTitles=new ArrayList<>(result.items);
+                if(token!=generation||isDestroyed())return;body.removeView(loading);currentTitles=new ArrayList<>(result.items);catalogueChoices=choices;catalogueIndex=index;serverGenre=genre;
                 nextSkip=result.items.size();canLoadMore=!result.items.isEmpty();
                 catalogueArea=column();body.addView(catalogueArea);renderCatalogueContents();
             });
@@ -219,7 +220,7 @@ public class MainActivity extends Activity {
         addChip(chips,"Filters · "+(titleFilters.size()+(yearFilter>0?1:0)),this::chooseTitleFilter);
         addChip(chips,"Sort · "+titleSort,()->pick("Sort",Arrays.asList("Newest","Oldest","Title A–Z","Rating high–low"),titleSort,v->{titleSort=v;renderCatalogueContents();}));
         if(AddonClient.supports(selected,"genre"))addChip(chips,"Genre · "+(serverGenre.isEmpty()?"All":serverGenre),()->{
-            List<String> values=new ArrayList<>();values.add("All");JSONArray es=selected.optJSONArray("extra");
+            List<String> values=new ArrayList<>();if(AddonClient.defaultGenre(selected).isEmpty())values.add("All");JSONArray es=selected.optJSONArray("extra");
             if(es!=null)for(int i=0;i<es.length();i++){JSONObject e=es.optJSONObject(i);if(e!=null&&"genre".equals(e.optString("name"))){JSONArray opts=e.optJSONArray("options");if(opts!=null)for(int j=0;j<opts.length();j++)values.add(opts.optString(j));}}
             pick("Catalogue genre",values,serverGenre.isEmpty()?"All":serverGenre,v->{serverGenre="All".equals(v)?"":v;titleFilters.clear();show("Discover");});
         });

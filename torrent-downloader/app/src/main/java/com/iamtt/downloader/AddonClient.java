@@ -57,12 +57,22 @@ public final class AddonClient {
             JSONArray cs=manifest.optJSONArray("catalogs");if(cs==null)continue;
             for(int j=0;j<cs.length();j++) {
                 JSONObject c=cs.getJSONObject(j);
-                if(!type.equals(c.optString("type")) || (search?!Protocol.searchable(c):!Protocol.browsable(c)))continue;
+                if(!type.equals(c.optString("type")) || (search?!Protocol.searchable(c):!browsableWithOptions(c)))continue;
                 list.add(new JSONObject(c.toString()).put("addonUrl",addon.getString("url"))
                     .put("label",manifest.optString("name")+" · "+c.optString("name",c.optString("id"))));
             }
         }
         return list;
+    }
+    private static boolean browsableWithOptions(JSONObject c){
+        if(Protocol.browsable(c))return true;
+        JSONArray es=c.optJSONArray("extra");if(es==null)return false;
+        for(int i=0;i<es.length();i++){JSONObject e=es.optJSONObject(i);if(e!=null&&e.optBoolean("isRequired")&&(!"genre".equals(e.optString("name"))||e.optJSONArray("options")==null||e.optJSONArray("options").length()==0))return false;}
+        return true;
+    }
+    public static String defaultGenre(JSONObject c){
+        JSONArray es=c.optJSONArray("extra");if(es!=null)for(int i=0;i<es.length();i++){JSONObject e=es.optJSONObject(i);if(e!=null&&"genre".equals(e.optString("name"))&&e.optBoolean("isRequired")){JSONArray opts=e.optJSONArray("options");if(opts!=null)return opts.optString(0);}}
+        return "";
     }
     public Results catalog(JSONObject catalog,String type,String query,int skip,String genre) throws Exception {
         Results result=new Results();
