@@ -14,6 +14,12 @@ import java.util.*;
 
 @RunWith(AndroidJUnit4.class)
 public class NativeEngineTest {
+    @Test public void crashReportIsReadableAndRemovesLinks() {
+        android.content.Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue(CrashReports.report(c).contains("IAMTT v"));
+        String privateLink="https://example.org/private-token/manifest.json";
+        assertFalse(CrashReports.redact("failed "+privateLink).contains("private-token"));
+    }
     @Test public void standaloneAppLaunches() {
         try(ActivityScenario<MainActivity> activity=ActivityScenario.launch(MainActivity.class)) {
             activity.onActivity(a->assertEquals("com.iamtt.downloader",a.getPackageName()));

@@ -22,9 +22,10 @@ public class DownloadService extends Service {
     private PowerManager.WakeLock wake;
     private volatile SessionManager session;
     private final ConnectivityManager.NetworkCallback networkWatcher = new ConnectivityManager.NetworkCallback() {
-        @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) { enforceNetwork(); }
-        @Override public void onLost(Network network) { enforceNetwork(); }
-        private void enforceNetwork() { SessionManager current=session; if(current!=null && !allowedNetwork()) current.pause(); }
+        // Network callbacks run on another thread. The worker checks the network
+        // every second; never call the native session concurrently with stop().
+        @Override public void onCapabilitiesChanged(Network n, NetworkCapabilities c) { }
+        @Override public void onLost(Network n) { }
     };
     public static void start(Context c) {
         c.startForegroundService(new Intent(c,DownloadService.class));
@@ -104,7 +105,7 @@ public class DownloadService extends Service {
                 settings.setEnableDht(true);settings.setEnableLsd(true);
                 session.start(new SessionParams(settings));
             }
-            item.peers=0;item.state="Finding peers";
+            item.peers=0;item.seeds=0;item.state="Finding peers";
             item.detail=item.reportedSeeds>=0
                 ?"Fetching torrent metadata · "+item.reportedSeeds+" seeders reported by the addon. Up to 90 seconds."
                 :"Fetching torrent metadata · addon did not report seeders. Up to 90 seconds.";
@@ -141,7 +142,7 @@ public class DownloadService extends Service {
                 waitForNetwork(item); if(!active(item)) break;
                 TorrentStatus status=handle.status(true);
                 if(status.errorCode().isError()) throw new IOException("The torrent engine reported a file or network error. Check storage and retry.");
-                item.done=status.totalWantedDone();item.speed=status.downloadRate();item.peers=status.numPeers();
+                item.done=status.totalWantedDone();item.speed=status.downloadRate();item.peers=status.numPeers();item.seeds=status.numSeeds();
                 item.state="Downloading";item.detail=item.peers==0?"Waiting for peers. Availability depends on the source.":"Downloading selected video";
                 if(status.isFinished() && item.done>=item.total && output.exists()) {
                     item.state="Complete";item.speed=0;item.detail="Ready to play or save a copy."; break;
@@ -156,7 +157,8 @@ public class DownloadService extends Service {
             if(!item.state.equals("Paused")) {item.state="Error";item.detail=e instanceof IOException||e instanceof IllegalArgumentException?e.getMessage():"Download interrupted. Tap Resume to recheck and continue.";}
         } finally {
             // Keep data on pause/completion. Re-adding checks existing pieces before continuing.
-            if(handle!=null && handle.isValid()) {handle.pause();session.remove(handle);}
+            try{if(handle!=null && handle.isValid() && session!=null) {handle.pause();session.remove(handle);}}
+            catch(Exception cleanup){if(!item.state.equals("Complete")&&!item.state.equals("Paused")){item.state="Error";item.detail="Torrent cleanup failed. Check Crash report before retrying.";}}
             item.speed=0;store.save();
         }
     }

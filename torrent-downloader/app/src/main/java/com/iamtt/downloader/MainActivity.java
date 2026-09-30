@@ -85,7 +85,7 @@ public class MainActivity extends Activity {
     private GradientDrawable rounded(int color,int radius){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(dp(radius));return g;}
 
     private Button button(String label,Runnable action){
-        Button b=new Button(this);b.setText(label);b.setTextSize(13);b.setAllCaps(false);b.setTextColor(INK);
+        Button b=new Button(this);b.setText(label);b.setTextSize(13);b.setSingleLine(true);b.setAllCaps(false);b.setTextColor(INK);
         b.setBackground(rounded(CARD2,14));b.setOnClickListener(v->action.run());b.setPadding(dp(13),0,dp(13),0);return b;
     }
     private Button navButton(String label,Runnable action){
@@ -489,6 +489,13 @@ public class MainActivity extends Activity {
 
     private void showDownloads(){
         brandBar();title("Downloads");
+        body.addView(button("Crash report",()->{
+            String report=CrashReports.report(this);TextView details=text(report,12,INK);details.setTextIsSelectable(true);details.setPadding(dp(16),dp(12),dp(16),dp(12));
+            ScrollView scroll=new ScrollView(this);scroll.addView(details);
+            new AlertDialog.Builder(this).setTitle("Device crash report").setView(scroll)
+                .setPositiveButton("Copy report",(d,w)->{((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("IAMTT crash report",report));Toast.makeText(this,"Report copied",Toast.LENGTH_SHORT).show();})
+                .setNegativeButton("Close",null).show();
+        }));
 
         LinearLayout tabs=new LinearLayout(this);tabs.setPadding(0,dp(8),0,dp(12));
         for(String name:new String[]{"All","Downloading","Completed","Paused"}){
@@ -506,7 +513,7 @@ public class MainActivity extends Activity {
             LinearLayout c=card();
             LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);
             TextView name=text(i.title,17,INK);name.setTypeface(null,Typeface.BOLD);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);top.addView(name,new LinearLayout.LayoutParams(0,-2,1));
-            TextView state=text(downloadGroup(i),12,i.state.equals("Complete")?0xFF30D158:(i.state.equals("Error")?0xFFFF9F0A:BLUE));state.setGravity(Gravity.RIGHT);top.addView(state);c.addView(top);
+            TextView state=text(i.state,12,i.state.equals("Complete")?0xFF30D158:(i.state.equals("Error")?0xFFFF9F0A:BLUE));state.setGravity(Gravity.RIGHT);top.addView(state);c.addView(top);
 
             TextView status=text(progress(i),12,MUTED);c.addView(status);statuses.put(i.id,status);
             ProgressBar bar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(1000);c.addView(bar,new LinearLayout.LayoutParams(-1,dp(6)));bars.put(i.id,bar);renderedStates.put(i.id,i.state);
@@ -539,7 +546,8 @@ public class MainActivity extends Activity {
         long total=i.total>0?i.total:i.expectedTotal;String seedText=i.reportedSeeds>=0?String.valueOf(i.reportedSeeds):"—";
         long percent=total>0?Math.min(100,100*i.done/total):0;
         String first=size(i.done)+" / "+(total>0?size(total):"unknown")+" · "+size(i.speed)+"/s · "+percent+"%";
-        String second="Peers "+i.peers+" · Seeders "+seedText;
+        String second=(i.state.equals("Finding peers")?"Fetching metadata · live peer count unavailable":
+            "Connected peers "+i.peers+" · Connected seeds "+i.seeds)+"\nAddon-reported seeders "+seedText;
         String detail=i.detail==null?"":i.detail;
         return first+"\n"+second+(detail.isEmpty()?"":"\n"+detail);
     }

@@ -10,7 +10,7 @@ public final class DownloadStore {
         public final int requested;
         public volatile String state, detail, path = "";
         public volatile long done, total, expectedTotal, speed;
-        public volatile int peers, reportedSeeds=-1;
+        public volatile int peers, seeds, reportedSeeds=-1;
         public volatile String sourcePublisher="", quality="", codec="";
 
         Item(String hash, String title, String magnet, int requested, String state) {
