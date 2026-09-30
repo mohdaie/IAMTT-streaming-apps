@@ -31,9 +31,9 @@ jobs:
       - name: Verify Android launch and real local torrent transfer
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 36
           arch: x86_64
-          target: default
+          target: google_apis
           disable-animations: true
           script: gradle -p torrent-downloader :app:connectedDebugAndroidTest --no-daemon --stacktrace
       - name: Prepare separate APK
