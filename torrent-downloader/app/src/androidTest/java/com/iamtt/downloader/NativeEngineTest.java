@@ -50,6 +50,53 @@ public class NativeEngineTest {
             assertArrayEquals(original,Files.readAllBytes(new File(target,"fixture.mp4").toPath()));
         } finally {destination.stop();source.stop();delete(root);}
     }
+    @Test public void foregroundServiceKeepsTransferringWhileScreenIsOpen() throws Exception {
+        android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        DownloadStore store=DownloadStore.get(context);store.pauseAll();store.wifiOnly(false);
+        File root=new File(context.getCacheDir(),"service-test-"+System.nanoTime());assertTrue(root.mkdirs());
+        byte[] original=new byte[8*1024*1024];new Random(System.nanoTime()).nextBytes(original);
+        File video=new File(root,"service-fixture.mp4");Files.write(video.toPath(),original);
+        java.net.ServerSocket tracker=new java.net.ServerSocket(0,10,java.net.InetAddress.getByName("127.0.0.1"));
+        SessionManager seed=new SessionManager();SettingsPack settings=new SettingsPack();
+        settings.listenInterfaces("127.0.0.1:17881");settings.setEnableDht(false);settings.setEnableLsd(false);settings.uploadRateLimit(65536);
+        Entry entry=new TorrentBuilder().path(video).flags(TorrentBuilder.V1_ONLY).generate().entry();
+        String trackerUrl="http://127.0.0.1:"+tracker.getLocalPort()+"/announce";
+        entry.dictionary().put("announce",new Entry(trackerUrl));TorrentInfo info=new TorrentInfo(entry.bencode());
+        Thread server=new Thread(()->{
+            while(!tracker.isClosed())try(java.net.Socket socket=tracker.accept()){
+                socket.setSoTimeout(5000);BufferedReader reader=new BufferedReader(new InputStreamReader(socket.getInputStream(),java.nio.charset.StandardCharsets.US_ASCII));
+                String line;while((line=reader.readLine())!=null&&!line.isEmpty()){}
+                byte[] response=Entry.fromMap(new HashMap<String,Object>(){{put("interval",5);put("complete",1);put("incomplete",0);put("peers",Collections.singletonList(new HashMap<String,Object>(){{put("ip","127.0.0.1");put("port",17881);}}));}}).bencode();
+                OutputStream out=socket.getOutputStream();out.write(("HTTP/1.1 200 OK\r\nContent-Length: "+response.length+"\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));out.write(response);out.flush();
+            }catch(Exception ignored){}
+        },"fixture-tracker");server.setDaemon(true);server.start();
+        DownloadStore.Item job=null;
+        try(ActivityScenario<MainActivity> activity=ActivityScenario.launch(new android.content.Intent(context,MainActivity.class).putExtra("downloads",true))){
+            seed.start(new SessionParams(settings));seed.download(info,root);TorrentHandle sh=awaitHandle(seed,info);sh.setUploadLimit(65536);
+            long until=System.currentTimeMillis()+20000;while(!sh.status(true).isSeeding()&&System.currentTimeMillis()<until)Thread.sleep(100);
+            assertTrue("Fixture seed ready",sh.status(true).isSeeding());
+            org.json.JSONObject stream=new org.json.JSONObject().put("infoHash",info.infoHash().toHex()).put("fileIdx",0).put("sources",new org.json.JSONArray().put("tracker:"+trackerUrl));
+            job=store.add(stream,"Original service test fixture");
+            activity.onActivity(a->DownloadService.start(a));
+            until=System.currentTimeMillis()+90000;
+            while(job.done==0&&!job.state.equals("Error")&&System.currentTimeMillis()<until)Thread.sleep(250);
+            assertTrue("Foreground service must receive real bytes: "+job.state+" "+job.detail,job.done>0);
+            long before=job.done;
+            // Continue through repeated stats polling, saves and notifications,
+            // well beyond the few seconds reported on the user's phone.
+            for(int tick=0;tick<45;tick++){
+                Thread.sleep(1000);assertFalse("Service stopped unexpectedly: "+job.detail,job.state.equals("Error"));
+                activity.onActivity(a->assertFalse(a.isFinishing()));
+            }
+            assertTrue("Data must continue increasing",job.done>before);
+            assertEquals("Downloading",job.state);
+        }finally{
+            if(job!=null){job.state="Paused";store.save();}
+            Thread.sleep(1500);context.stopService(new android.content.Intent(context,DownloadService.class));
+            tracker.close();server.join(2000);seed.stop();delete(root);
+        }
+    }
+
     private TorrentHandle awaitHandle(SessionManager session,TorrentInfo info) throws Exception {
         long until=System.currentTimeMillis()+10000;TorrentHandle handle;
         do{handle=session.find(info.infoHash());if(handle!=null&&handle.isValid())return handle;Thread.sleep(100);}while(System.currentTimeMillis()<until);
