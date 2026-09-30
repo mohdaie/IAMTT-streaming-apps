@@ -61,6 +61,8 @@ class ConfigStore(context: Context) {
         cfg.copy(profiles = if (exists) cfg.profiles.map { if (it.id == profile.id) profile else it } else cfg.profiles + profile)
     }
 
+    fun setOpenSubtitles(settings: OpenSubtitlesSettings?) = update { it.copy(openSubtitles = settings) }
+
     fun deleteProfile(id: String) = update { cfg ->
         cfg.copy(profiles = cfg.profiles.filterNot { it.id == id })
     }

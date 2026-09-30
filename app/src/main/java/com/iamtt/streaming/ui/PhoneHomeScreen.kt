@@ -29,7 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -57,13 +57,16 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iamtt.streaming.IamttApp
-import com.iamtt.streaming.data.FolderType
+import com.iamtt.streaming.data.Catalog
+import com.iamtt.streaming.data.CatalogTitle
+import com.iamtt.streaming.data.MovieEntry
+import com.iamtt.streaming.data.ShowEntry
+import com.iamtt.streaming.data.TitleInfo
 import com.iamtt.streaming.data.Profile
 import com.iamtt.streaming.data.VideoFile
 import kotlin.random.Random
@@ -78,15 +81,18 @@ fun PhoneHomeScreen(
     app: IamttApp,
     profile: Profile,
     onPlay: (VideoFile) -> Unit,
+    onOpenTitle: (CatalogTitle) -> Unit,
     onOpenSetup: () -> Unit,
     onSwitchProfile: () -> Unit,
 ) {
     val state by app.library.state.collectAsStateWithLifecycle()
-    var only by rememberSaveable { mutableStateOf<FolderType?>(null) }
+    val infos by app.metadata.titles.collectAsStateWithLifecycle()
+    var only by rememberSaveable { mutableStateOf<Kind?>(null) }
     val pick = remember { Random.nextInt(8) }
+    val catalog = remember(state.snapshot) { Catalog.from(state.snapshot) }
     val history = remember(profile.id, state.snapshot) { app.history.inProgress(profile.id) }
-    val home = remember(state.snapshot, history, only, profile.name) {
-        buildHome(state.snapshot, history, profile.name, only, pick)
+    val home = remember(catalog, history, infos, only, profile.name) {
+        buildHome(catalog, history, infos, profile.name, only, pick)
     }
     val listState = rememberLazyListState()
     // The bar starts see-through over the featured title and darkens as you scroll.
@@ -119,11 +125,11 @@ fun PhoneHomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     ) {
-                        CategoryChip("TV Shows", only == FolderType.TV_SHOWS) {
-                            only = if (only == FolderType.TV_SHOWS) null else FolderType.TV_SHOWS
+                        CategoryChip("TV Shows", only == Kind.SHOWS) {
+                            only = if (only == Kind.SHOWS) null else Kind.SHOWS
                         }
-                        CategoryChip("Movies", only == FolderType.MOVIES) {
-                            only = if (only == FolderType.MOVIES) null else FolderType.MOVIES
+                        CategoryChip("Movies", only == Kind.MOVIES) {
+                            only = if (only == Kind.MOVIES) null else Kind.MOVIES
                         }
                     }
                 }
@@ -142,12 +148,17 @@ fun PhoneHomeScreen(
                 }
                 home.featured?.let { featured ->
                     item {
+                        // Play resumes where this profile left off: the episode in progress, or the movie.
+                        val (video, resuming) = when (val t = featured.title) {
+                            is ShowEntry -> t.nextUp(history).let { (e, p) -> e.video to (p != null) }
+                            is MovieEntry -> t.video to (history.any { it.videoId == t.video.id })
+                        }
                         Hero(
-                            item = featured,
-                            onPlay = { onPlay(featured.video) },
-                            onStartOver = if (featured.progress != null) {
-                                { app.history.clear(profile.id, featured.video.id); onPlay(featured.video) }
-                            } else null,
+                            card = featured,
+                            info = infos[featured.title.id],
+                            resuming = resuming,
+                            onPlay = { onPlay(video) },
+                            onInfo = { onOpenTitle(featured.title) },
                         )
                     }
                 }
@@ -166,8 +177,11 @@ fun PhoneHomeScreen(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(row.items, key = { it.video.id }) { item ->
-                                PosterCard(item, width = 112.dp) { onPlay(item.video) }
+                            items(row.cards, key = { it.title.id }) { card ->
+                                PosterCard(card, infos[card.title.id], width = 112.dp) {
+                                    val resume = card.resume
+                                    if (resume != null) onPlay(resume) else onOpenTitle(card.title)
+                                }
                             }
                         }
                     }
@@ -220,9 +234,9 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
     )
 }
 
-/** The big featured title with Play (or Resume) and, when part-watched, Start over. */
+/** The big featured title: its poster, what it is, Play (or Resume) and More info. */
 @Composable
-private fun Hero(item: HomeItem, onPlay: () -> Unit, onStartOver: (() -> Unit)?) {
+private fun Hero(card: HomeCard, info: TitleInfo?, resuming: Boolean, onPlay: () -> Unit, onInfo: () -> Unit) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
@@ -242,21 +256,26 @@ private fun Hero(item: HomeItem, onPlay: () -> Unit, onStartOver: (() -> Unit)?)
                 )
                 .shadow(20.dp, shape)
                 .clip(shape)
-                .clickable(onClick = onPlay),
+                .clickable(onClick = onInfo),
         ) {
-            PosterArt(item.video.displayName, Modifier.fillMaxSize(), titleSize = 34.sp, titleBottomPadding = 118.dp)
+            TitlePoster(
+                card.title, info, Modifier.fillMaxSize(), large = true,
+                fallbackTitleSize = 34.sp, fallbackTitleBottomPadding = 118.dp,
+            )
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    // A strong fade so the text stays readable over any poster's own title art.
+                    .background(Brush.verticalGradient(0f to Color.Transparent, 0.35f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.92f)))
+                    .padding(start = 16.dp, end = 16.dp, top = 72.dp, bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    item.subtitle(), color = Color(0xFFD8D8DE), fontSize = 13.sp, maxLines = 1,
+                    card.title.metaLine(info), color = Color(0xFFE6E6EA), fontSize = 13.sp, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                 )
-                item.watchedFraction()?.let {
+                card.watchedFraction()?.let {
                     Spacer(Modifier.height(10.dp))
                     WatchBar(it, Modifier.clip(CircleShape))
                 }
@@ -270,37 +289,21 @@ private fun Hero(item: HomeItem, onPlay: () -> Unit, onStartOver: (() -> Unit)?)
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
-                        Text(if (item.progress != null) "Resume" else "Play", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(if (resuming) "Resume" else "Play", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     }
-                    if (onStartOver != null) {
-                        Button(
-                            onClick = onStartOver,
-                            shape = RoundedCornerShape(6.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0x996D6D78), contentColor = Color.White),
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Start over", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
+                    Button(
+                        onClick = onInfo,
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0x996D6D78), contentColor = Color.White),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.Info, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("More info", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-fun PosterCard(item: HomeItem, width: Dp, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(6.dp)
-    Box(
-        Modifier
-            .width(width)
-            .aspectRatio(2f / 3f)
-            .pressable(shape, onClick),
-    ) {
-        PosterArt(item.video.displayName, Modifier.fillMaxSize())
-        item.watchedFraction()?.let { WatchBar(it, Modifier.align(Alignment.BottomCenter)) }
     }
 }
 

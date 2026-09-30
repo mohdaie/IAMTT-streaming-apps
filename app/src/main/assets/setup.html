@@ -89,21 +89,38 @@
         <button id="tabMine" onclick="browseFrom('root')">My Drive</button>
         <button id="tabShared" onclick="browseFrom('shared')">Shared with me</button>
       </div>
-      <p class="muted">Tap a folder to look inside it, or add it as Movies or TV Shows.</p>
+      <p class="muted">Tap a folder to look inside it, or <b>+ Add</b> it. Put TV shows and movies in any folder: IAMTT tells them apart by their file names.</p>
       <div class="crumbs" id="crumbs"></div>
       <ul id="browser"></ul>
       <div class="row"><button id="refreshBtn" onclick="loadFolders()">Refresh</button></div>
       <p class="muted" style="margin-top:14px">Or paste a folder link:</p>
       <div class="row"><input id="link" placeholder="https://drive.google.com/drive/folders/…"></div>
       <div class="row">
-        <select id="linkType" style="flex:1"><option value="MOVIES">Movies</option><option value="TV_SHOWS">TV Shows</option></select>
         <button onclick="addLink()">Add folder</button>
       </div>
       <div id="folderMsg" class="msg"></div>
     </section>
 
+    <section id="s4">
+      <h2><span class="num">3</span>Online subtitles <span class="muted" style="font-weight:400">(optional)</span></h2>
+      <p class="muted">When a video has no subtitles in your language, IAMTT can fetch them from OpenSubtitles.com. Create a free account there, then get an API key under <b>Profile → API consumers</b>.</p>
+      <div id="subsOn" class="hidden">
+        <p>✓ On<span id="subsUser"></span> · <span id="subsLangs"></span></p>
+        <div class="row"><button onclick="editSubs()">Change</button><button onclick="removeSubs()">Turn off</button></div>
+      </div>
+      <div id="subsForm">
+        <div class="row"><input id="osKey" placeholder="API key" autocomplete="off"></div>
+        <div class="row"><input id="osUser" placeholder="Username (optional)" autocomplete="username"></div>
+        <div class="row"><input id="osPass" type="password" placeholder="Password (optional)" autocomplete="current-password"></div>
+        <div class="row"><input id="osLangs" placeholder="Languages, e.g. en, ms"></div>
+        <p class="muted">Your username and password give you more downloads a day. Leave languages empty to use the phone's language, then English.</p>
+        <div class="row"><button class="primary" id="subsBtn" onclick="saveSubs()">Save</button><button id="subsCancel" class="hidden" onclick="cancelSubs()">Cancel</button></div>
+      </div>
+      <div id="subsMsg" class="msg"></div>
+    </section>
+
     <section id="s3">
-      <h2><span class="num">3</span>Your library</h2>
+      <h2><span class="num">4</span>Your library</h2>
       <p id="scanStatus" class="muted"></p>
       <ul id="library"></ul>
       <div class="row"><button id="rescanBtn" onclick="rescan()">Rescan all</button></div>
@@ -124,7 +141,6 @@ async function api(path, opts = {}) {
 }
 function show(el, text, kind) { el.textContent = text; el.className = 'msg ' + kind; }
 function clear(el) { el.className = 'msg'; el.textContent = ''; }
-function typeLabel(t) { return t === 'TV_SHOWS' ? 'TV Shows' : 'Movies'; }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function setPin() { PIN = $('pinInput').value.trim(); start(); }
@@ -142,6 +158,7 @@ async function start() {
 
 let mode = null;
 let drawnFolders = '';
+let editingSubs = false;
 
 function render() {
   const s = state;
@@ -158,6 +175,13 @@ function render() {
   $('s1').classList.toggle('done', connected);
   $('s2').classList.toggle('done', s.folders.length > 0);
   $('s3').classList.toggle('done', s.folders.length > 0 && !s.scanning);
+  const subs = s.subtitles || { on: false };
+  $('s4').classList.toggle('done', subs.on);
+  $('subsOn').classList.toggle('hidden', !subs.on || editingSubs);
+  $('subsForm').classList.toggle('hidden', subs.on && !editingSubs);
+  $('subsCancel').classList.toggle('hidden', !editingSubs);
+  $('subsUser').textContent = subs.user ? ' as ' + subs.user : '';
+  $('subsLangs').textContent = subs.languages || '';
   $('s2').style.opacity = connected ? 1 : .5;
   $('refreshBtn').disabled = !connected;
   if (s.mode !== mode) {
@@ -174,7 +198,7 @@ function render() {
   } else {
     lib.innerHTML = s.folders.map(f => `
       <li><div><div class="name">${esc(f.name)}</div>
-        <span class="tag ${f.type === 'TV_SHOWS' ? 'tv' : 'movies'}">${typeLabel(f.type)}</span>
+
         <span class="muted">${f.error ? '⚠ ' + esc(f.error) : (f.videos != null ? f.videos + ' videos' : 'scanning…')}</span></div>
         <button onclick="removeFolder('${esc(f.id)}')">Remove</button></li>`).join('');
   }
@@ -250,12 +274,12 @@ function renderFolders() {
       ${addButtons(f.id, `addAt`, i)}</li>`).join('');
 }
 
-// "Added as …" if already chosen, otherwise the + Movies / + TV Shows buttons.
+// "Added" if already chosen, otherwise + Add. Shows and movies are sorted out by file name, so one button will do.
 function addButtons(id, fn, arg) {
   const added = state.folders.find(x => x.id === id);
-  if (added) return `<span class="tag ${added.type === 'TV_SHOWS' ? 'tv' : 'movies'}">Added as ${typeLabel(added.type)}</span>`;
+  if (added) return `<span class="tag">Added</span>`;
   const call = type => arg === undefined ? `${fn}('${type}')` : `${fn}(${arg},'${type}')`;
-  return `<span class="row" style="margin:0"><button onclick="${call('MOVIES')}">+ Movies</button><button onclick="${call('TV_SHOWS')}">+ TV Shows</button></span>`;
+  return `<button onclick="${call('MOVIES')}">+ Add</button>`;
 }
 
 function addAt(i, type) { return addFolder(listing[i].id, type); }
@@ -268,11 +292,38 @@ async function addFolder(id, type) {
     show($('folderMsg'), 'Added. Scanning has started.', 'ok');
   } catch (e) { show($('folderMsg'), e.message, 'err'); }
 }
+function editSubs() {
+  editingSubs = true;
+  $('osUser').value = state.subtitles.user || '';
+  $('osLangs').value = state.subtitles.codes || '';
+  $('osKey').placeholder = 'API key (empty: keep the saved one)';
+  $('osPass').placeholder = 'Password (empty: keep it)';
+  render();
+}
+function cancelSubs() {
+  editingSubs = false; $('osKey').value = ''; $('osPass').value = ''; clear($('subsMsg'));
+  render();
+}
+async function saveSubs() {
+  $('subsBtn').disabled = true; show($('subsMsg'), 'Checking with OpenSubtitles…', 'ok');
+  try {
+    state = await api('/api/subtitles', { method: 'POST', body: JSON.stringify({
+      apiKey: $('osKey').value, username: $('osUser').value, password: $('osPass').value, languages: $('osLangs').value }) });
+    editingSubs = false; $('osKey').value = ''; $('osPass').value = '';
+    show($('subsMsg'), 'Saved. Videos without subtitles will get them automatically.', 'ok');
+    render();
+  } catch (e) { show($('subsMsg'), e.message, 'err'); }
+  $('subsBtn').disabled = false;
+}
+async function removeSubs() {
+  try { state = await api('/api/subtitles/remove', { method: 'POST', body: '{}' }); clear($('subsMsg')); render(); }
+  catch (e) { alert(e.message); }
+}
 async function addLink() {
   const input = $('link').value.trim();
   if (!input) return show($('folderMsg'), 'Paste a folder link first.', 'err');
   try {
-    state = await api('/api/folders', { method: 'POST', body: JSON.stringify({ input, type: $('linkType').value }) });
+    state = await api('/api/folders', { method: 'POST', body: JSON.stringify({ input, type: 'MOVIES' }) });
     $('link').value = ''; render();
     show($('folderMsg'), 'Added. Scanning has started.', 'ok');
   } catch (e) { show($('folderMsg'), e.message, 'err'); }

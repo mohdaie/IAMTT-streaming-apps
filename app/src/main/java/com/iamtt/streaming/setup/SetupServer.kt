@@ -7,6 +7,9 @@ import com.iamtt.streaming.data.ConfigStore
 import com.iamtt.streaming.data.FolderType
 import com.iamtt.streaming.data.LibraryFolder
 import com.iamtt.streaming.data.LibraryRepository
+import com.iamtt.streaming.data.OnlineSubtitles
+import com.iamtt.streaming.data.OpenSubtitlesSettings
+import com.iamtt.streaming.data.Subtitles
 import com.iamtt.streaming.drive.DriveAuth
 import com.iamtt.streaming.drive.DriveClient
 import com.iamtt.streaming.drive.DriveFile
@@ -50,6 +53,7 @@ class SetupServer(
     private val drive: DriveClient,
     private val auth: DriveAuth,
     private val library: LibraryRepository,
+    private val onlineSubtitles: OnlineSubtitles,
 ) {
     val pin: String = Random.nextInt(1000, 10000).toString()
     var port: Int = 0
@@ -197,6 +201,8 @@ class SetupServer(
             "POST /api/folders" -> addFolder(req.body)
             "POST /api/folders/remove" -> removeFolder(req.body)
             "POST /api/rescan" -> { library.rescan(); json(element = stateJson()) }
+            "POST /api/subtitles" -> saveSubtitles(req.body)
+            "POST /api/subtitles/remove" -> { config.setOpenSubtitles(null); json(element = stateJson()) }
             else -> error(404, "Unknown API call")
         }
     }
@@ -212,6 +218,12 @@ class SetupServer(
             })
             cfg.googleAccount?.let { put("account", it) }
             put("hasKey", cfg.hasKey)
+            put("subtitles", buildJsonObject {
+                put("on", cfg.openSubtitles != null)
+                cfg.openSubtitles?.username?.takeIf { it.isNotBlank() }?.let { put("user", it) }
+                put("languages", onlineSubtitles.languages().joinToString(", ") { OnlineSubtitles.languageName(it) })
+                put("codes", cfg.openSubtitles?.languages.orEmpty().joinToString(", "))
+            })
             cfg.serviceAccountEmail?.let { put("email", it) }
             put("scanning", lib.scanning)
             lib.lastError?.let { put("lastError", it) }
@@ -245,6 +257,26 @@ class SetupServer(
         }
         config.setKey(body.trim(), key.clientEmail)
         auth.serviceAccount.invalidate()
+        return json(element = stateJson())
+    }
+
+    /** Checks the OpenSubtitles key (and login, if given) with OpenSubtitles before saving it. */
+    private fun saveSubtitles(body: String): HttpResponse {
+        val obj = runCatching { AppJson.parseToJsonElement(body).jsonObject }.getOrNull() ?: return error(400, "Bad request")
+        fun field(name: String) = obj[name]?.jsonPrimitive?.content?.trim().orEmpty()
+        val key = field("apiKey").ifEmpty { config.current.openSubtitles?.apiKey.orEmpty() }
+        if (key.isEmpty()) return error(400, "Paste your OpenSubtitles API key.")
+        val user = field("username")
+        // Leaving the password empty keeps the saved one for the same account.
+        val password = field("password").ifEmpty {
+            config.current.openSubtitles?.takeIf { it.username == user }?.password.orEmpty()
+        }
+        if (user.isNotEmpty() && password.isEmpty()) return error(400, "Enter the password for $user, or leave the username empty.")
+        val words = field("languages").split(',', ' ', ';').filter { it.isNotBlank() }
+        val languages = words.map { w -> Subtitles.normalizeLanguage(w) ?: return error(400, "\"$w\" isn't a language IAMTT knows. Try a code like en or ms.") }
+        val settings = OpenSubtitlesSettings(key, user.ifEmpty { null }, password.ifEmpty { null }, languages.distinct())
+        runBlocking { onlineSubtitles.check(settings) }?.let { return error(400, it) }
+        config.setOpenSubtitles(settings)
         return json(element = stateJson())
     }
 

@@ -42,7 +42,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import com.iamtt.streaming.IamttApp
-import com.iamtt.streaming.data.FolderType
 import com.iamtt.streaming.setup.SetupServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -60,7 +59,7 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
     var serverError by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(Unit) {
-        val server = SetupServer(app, app.config, app.drive, app.auth, app.library)
+        val server = SetupServer(app, app.config, app.drive, app.auth, app.library, app.onlineSubtitles)
         try {
             port = server.start()
             pin = server.pin
@@ -150,8 +149,8 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
                 done = config.folders.isNotEmpty(),
                 text = when {
                     config.folders.isNotEmpty() -> "${config.folders.size} folder(s) added"
-                    isTv -> "Step 2: scan the QR code to add your Movies / TV Shows folders"
-                    else -> "Step 2: add your Movies / TV Shows folders"
+                    isTv -> "Step 2: scan the QR code to add the folders with your videos"
+                    else -> "Step 2: add the folders with your videos"
                 },
             )
             if (!isTv) {
@@ -172,9 +171,8 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
                     library.scanning && library.scanningFolder == f.name -> "scanning… ${library.foundSoFar} found"
                     else -> "waiting to scan"
                 }
-                val type = if (f.type == FolderType.TV_SHOWS) "TV Shows" else "Movies"
                 Text(
-                    "      •  ${f.name}  ($type) — $detail",
+                    "      •  ${f.name} — $detail",
                     color = Color(0xFFD8D8DE), fontSize = 17.sp,
                     modifier = Modifier.padding(vertical = 2.dp),
                 )

@@ -37,7 +37,10 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import com.iamtt.streaming.IamttApp
+import com.iamtt.streaming.data.Catalog
+import com.iamtt.streaming.data.CatalogTitle
 import com.iamtt.streaming.data.Profile
+import com.iamtt.streaming.data.TitleInfo
 import com.iamtt.streaming.data.VideoFile
 import kotlinx.coroutines.delay
 
@@ -51,12 +54,15 @@ fun LibraryScreen(
     app: IamttApp,
     profile: Profile,
     onPlay: (VideoFile) -> Unit,
+    onOpenTitle: (CatalogTitle) -> Unit,
     onOpenSetup: () -> Unit,
     onSwitchProfile: () -> Unit,
 ) {
     val state by app.library.state.collectAsStateWithLifecycle()
+    val infos by app.metadata.titles.collectAsStateWithLifecycle()
+    val catalog = remember(state.snapshot) { Catalog.from(state.snapshot) }
     val history = remember(profile.id, state.snapshot) { app.history.inProgress(profile.id) }
-    val home = remember(state.snapshot, history, profile.name) { buildHome(state.snapshot, history, profile.name) }
+    val home = remember(catalog, history, infos, profile.name) { buildHome(catalog, history, infos, profile.name) }
     val firstCard = remember { FocusRequester() }
     val hasVideos = home.rows.isNotEmpty()
 
@@ -88,7 +94,7 @@ fun LibraryScreen(
                     text = when {
                         state.scanning -> "Scanning ${state.scanningFolder ?: ""}… ${state.foundSoFar} found"
                         state.lastError != null -> "⚠ ${state.lastError}"
-                        else -> "${state.snapshot.scans.sumOf { it.videos.size }} videos"
+                        else -> "${catalog.shows.size} shows · ${catalog.movies.size} movies"
                     },
                     color = IamttMuted, fontSize = 16.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -139,11 +145,15 @@ fun LibraryScreen(
                         contentPadding = PaddingValues(horizontal = 48.dp),
                         horizontalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
-                        items(row.items.size, key = { row.items[it].video.id }) { i ->
-                            val item = row.items[i]
-                            VideoCard(
-                                item = item,
-                                onClick = { onPlay(item.video) },
+                        items(row.cards.size, key = { row.cards[it].title.id }) { i ->
+                            val card = row.cards[i]
+                            TvPosterCard(
+                                card = card,
+                                info = infos[card.title.id],
+                                onClick = {
+                                    val resume = card.resume
+                                    if (resume != null) onPlay(resume) else onOpenTitle(card.title)
+                                },
                                 modifier = if (rowIndex == 0 && i == 0) Modifier.focusRequester(firstCard) else Modifier,
                             )
                         }
@@ -156,26 +166,11 @@ fun LibraryScreen(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun VideoCard(item: HomeItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(onClick = onClick, modifier = modifier.size(width = 260.dp, height = 146.dp).tapToClick(onClick = onClick)) {
+private fun TvPosterCard(card: HomeCard, info: TitleInfo?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(onClick = onClick, modifier = modifier.size(width = 150.dp, height = 225.dp).tapToClick(onClick = onClick)) {
         Box(Modifier.fillMaxSize()) {
-            PosterArt(item.video.displayName, Modifier.fillMaxSize(), titleSize = 17.sp, titleBottomPadding = 26.dp)
-            Text(
-                details(item.video), color = Color(0xFFD8D8DE), fontSize = 12.sp, maxLines = 1,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 9.dp, bottom = 9.dp),
-            )
-            item.watchedFraction()?.let { WatchBar(it, Modifier.align(Alignment.BottomCenter)) }
+            TitlePoster(card.title, info, Modifier.fillMaxSize(), fallbackTitleSize = 16.sp)
+            card.watchedFraction()?.let { WatchBar(it, Modifier.align(Alignment.BottomCenter)) }
         }
     }
-}
-
-private fun details(v: VideoFile): String {
-    val parts = mutableListOf<String>()
-    v.height?.let { h -> parts += when { h >= 2000 -> "4K"; h >= 1000 -> "1080p"; h >= 700 -> "720p"; else -> "${h}p" } }
-    v.durationMs?.let { ms -> val m = ms / 60000; parts += if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m" }
-    if (v.size > 0) parts += String.format(java.util.Locale.US, "%.1f GB", v.size / 1_073_741_824.0)
-    parts += v.name.substringAfterLast('.', "").uppercase()
-    return parts.filter { it.isNotBlank() }.joinToString("  ·  ")
 }

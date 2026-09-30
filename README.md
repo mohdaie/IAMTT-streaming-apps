@@ -17,7 +17,7 @@ Google Drive (only the folders you share)  ──Drive API, byte ranges──▶
   (or add one). Google Play services grants the app read-only Drive access, so it can never
   change or delete anything. It only scans the folders you choose.
 - **Choose folders from your phone:** the TV shows a QR code and PIN. Your phone opens a small setup
-  page served by the TV on your Wi-Fi, where you browse your Drive and pick the Movies / TV Shows folders.
+  page served by the TV on your Wi-Fi, where you browse your Drive and add the folders with your videos.
 - **Stricter option:** instead of signing in, upload a Google *service account* key from the phone
   and share only your movie folders with it, so Google itself enforces that the app sees nothing else.
   The key is stored only on the TV, never in this repo or the APK.
@@ -33,7 +33,8 @@ Google Drive (only the folders you share)  ──Drive API, byte ranges──▶
 
 - [x] **Phase 1** – setup page, folder-only scanning, basic library rows, streaming playback, resume position
 - [x] **Profiles and phone layout** – "Who's watching?" profiles with pictures, per-profile Continue Watching, portrait phone home
-- [ ] **Phase 2** – file-name parsing (title/year, SxxEyy) and TMDB posters, plots, cast
+- [x] **Phase 2** – shows vs movies from file names (SxxEyy, 1x01, Season folders, "Title (Year)"), posters and details (TVmaze for shows and episodes, Wikipedia for movies), show and movie pages
+- [x] Subtitles from `.srt` / `.vtt` / `.ass` files next to videos (or in a Subs folder), brightness and volume sliders in the phone player
 - [ ] **Phase 3** – Netflix/Nuvio-style home: hero banner, Continue Watching, Recently Added, genres, detail pages, search
 - [ ] **Phase 4** – subtitles (.srt next to videos), audio track picker, auto-play next episode
 - [ ] **Phase 5** – polish and performance for big libraries (incremental rescans)

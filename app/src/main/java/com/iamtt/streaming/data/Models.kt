@@ -24,6 +24,17 @@ data class Profile(
     val photoVersion: Long? = null,
 )
 
+/** OpenSubtitles.com account for fetching subtitles online. Stored only on this device. */
+@Serializable
+data class OpenSubtitlesSettings(
+    val apiKey: String,
+    /** Optional; logged-in users get more downloads a day. */
+    val username: String? = null,
+    val password: String? = null,
+    /** Two-letter codes in order of preference; empty means the phone's language, then English. */
+    val languages: List<String> = emptyList(),
+)
+
 @Serializable
 data class AppConfig(
     /** Email of the Google account on this TV that the app signed in with. */
@@ -33,6 +44,7 @@ data class AppConfig(
     val serviceAccountEmail: String? = null,
     val folders: List<LibraryFolder> = emptyList(),
     val profiles: List<Profile> = emptyList(),
+    val openSubtitles: OpenSubtitlesSettings? = null,
 ) {
     /** Only one way of reaching Drive is active at a time; signing in with Google takes precedence. */
     val usesGoogleAccount: Boolean get() = !googleAccount.isNullOrBlank()
@@ -53,6 +65,8 @@ data class VideoFile(
     val durationMs: Long? = null,
     val width: Int? = null,
     val height: Int? = null,
+    /** Subtitle files found next to this video (or in a "Subs" folder beside it). */
+    val subtitles: List<SubtitleFile> = emptyList(),
 ) {
     val displayName: String
         get() = name.substringBeforeLast('.', name)
@@ -61,6 +75,10 @@ data class VideoFile(
             .replace(Regex("\\s+"), " ")
             .trim()
 }
+
+/** A subtitle file in Drive; [language] is an ISO code when the file name gives one ("en", "ms"). */
+@Serializable
+data class SubtitleFile(val id: String, val name: String, val label: String, val language: String? = null)
 
 @Serializable
 data class FolderScan(
