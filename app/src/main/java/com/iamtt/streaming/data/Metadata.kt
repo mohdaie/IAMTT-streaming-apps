@@ -40,6 +40,8 @@ data class TitleInfo(
     val posterLarge: String? = null,
     val genres: List<String> = emptyList(),
     val episodes: List<EpisodeInfo> = emptyList(),
+    /** e.g. "tt1234567"; helps find the right subtitles for a show. */
+    val imdbId: String? = null,
     val found: Boolean = true,
     val fetchedAt: Long = 0,
 )
@@ -131,6 +133,7 @@ class MetadataRepository(context: Context, private val http: OkHttpClient, priva
             posterLarge = full.obj("image")?.str("original"),
             genres = full["genres"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty(),
             episodes = episodes,
+            imdbId = full.obj("externals")?.str("imdb"),
             fetchedAt = System.currentTimeMillis(),
         )
     }

@@ -79,10 +79,17 @@ object Subtitles {
 
     private fun isLanguageCode(s: String) = s in codes
 
+    /** "English", "eng", "EN" or "Bahasa" -> a two-letter code; null if it isn't a language. */
+    fun normalizeLanguage(s: String): String? {
+        val w = s.trim().lowercase()
+        if (w.length in 2..3 && isLanguageCode(w)) return twoLetter(w)
+        return languageNamed(w)
+    }
+
     /** Players match two-letter codes, so "eng" -> "en", and old library codes like "may" -> "ms". */
     private val bibliographic = mapOf("may" to "ms", "chi" to "zh", "fre" to "fr", "ger" to "de", "dut" to "nl", "per" to "fa", "gre" to "el")
 
-    private fun twoLetter(code: String): String {
+    fun twoLetter(code: String): String {
         if (code.length == 2) return code
         bibliographic[code]?.let { return it }
         return Locale.getISOLanguages().firstOrNull { runCatching { Locale.forLanguageTag(it).isO3Language }.getOrNull() == code } ?: code

@@ -59,7 +59,7 @@ fun SetupScreen(app: IamttApp, onDone: () -> Unit) {
     var serverError by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(Unit) {
-        val server = SetupServer(app, app.config, app.drive, app.auth, app.library)
+        val server = SetupServer(app, app.config, app.drive, app.auth, app.library, app.onlineSubtitles)
         try {
             port = server.start()
             pin = server.pin

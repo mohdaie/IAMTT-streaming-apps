@@ -97,6 +97,17 @@ class DriveClient(private val auth: DriveAuth, private val base: OkHttpClient) {
 
     fun mediaUrl(fileId: String): String = "$API/files/$fileId?alt=media&supportsAllDrives=true"
 
+    /** Reads [length] bytes of a file from [start] (a Range request, so only that part is downloaded). Blocking. */
+    fun readRange(fileId: String, start: Long, length: Long): ByteArray {
+        val request = Request.Builder().url(mediaUrl(fileId)).header("Range", "bytes=$start-${start + length - 1}").build()
+        http.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) throw DriveException(explain(resp.code, ""), resp.code)
+            val bytes = resp.body?.bytes() ?: ByteArray(0)
+            if (bytes.size.toLong() != length) throw java.io.IOException("Expected $length bytes, got ${bytes.size}")
+            return bytes
+        }
+    }
+
     suspend fun getFolder(id: String): DriveFile = withContext(Dispatchers.IO) {
         val url = "$API/files/$id".toHttpUrl().newBuilder()
             .addQueryParameter("fields", "id,name,mimeType")

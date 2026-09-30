@@ -85,6 +85,8 @@ whatever folder they're in. It then finds posters, descriptions and episode name
   language, e.g. `Movie Title (2010).en.srt` and `Movie Title (2010).ms.srt`, or in a `Subs` folder beside it.
   They're switched on automatically; use the subtitles button in the player to change or turn them off.
 
+If a video has no subtitles of its own, IAMTT can find them online for you (see below).
+
 For example:
 
 ```
@@ -96,6 +98,26 @@ TV Shows/
     Season 01/
       Breaking Bad S01E01.mkv
 ```
+
+## Online subtitles (optional)
+
+When a video has no subtitle file next to it and no subtitles inside it, IAMTT can fetch them from
+[OpenSubtitles.com](https://www.opensubtitles.com) by the movie's name and year, or the show's
+season and episode. It checks the file itself too, so it prefers subtitles timed for your exact copy.
+This needs a free OpenSubtitles account:
+
+1. Sign up at <https://www.opensubtitles.com/en/users/sign_up> and confirm your email.
+2. Open <https://www.opensubtitles.com/en/consumers> (**Profile → API consumers**), click
+   **New consumer**, give it any name (e.g. `IAMTT`) and save. Copy its **API key**.
+3. Open the setup page from the TV's QR code. Under **3. Online subtitles**, paste the API key.
+   - **Languages**: e.g. `English, Malay`. The first one you have is used. Leave it empty to use the
+     phone's language, then English.
+   - **Username and password** (optional): OpenSubtitles allows more downloads a day when you add them.
+4. Tap **Save**. IAMTT checks the key before saving it.
+
+Then just play a video: "Looking for subtitles online…" shows at the bottom and they switch on by
+themselves a few seconds later. Each subtitle is downloaded once and kept on the device, so replaying
+an episode doesn't use up your daily downloads. Use the subtitles button in the player to turn them off.
 
 ## Advanced: use a service account instead of signing in
 
@@ -132,4 +154,6 @@ replaces the key.
 | "Folder not found" | The signed-in account can't open that folder. With a service account, share the folder with its address first. |
 | QR page won't open | The phone and TV must be on the same Wi-Fi, and some routers block devices from seeing each other ("AP/client isolation"). |
 | Video stops with "Drive refused the stream" | Google limits how often one file can be downloaded per day. Try again later. |
+| "Today's subtitle downloads are used up" | OpenSubtitles limits free downloads per day. Add your username and password for more, or try again tomorrow. |
+| "No subtitles found online" | Check the file name gives the right title and year (or season and episode). IAMTT tries again after 3 days. |
 | No sound on some files | The TV may not decode DTS/TrueHD. Use a soundbar with passthrough, or AAC/AC3 audio. |

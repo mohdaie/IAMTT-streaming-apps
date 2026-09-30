@@ -24,6 +24,17 @@ data class Profile(
     val photoVersion: Long? = null,
 )
 
+/** OpenSubtitles.com account for fetching subtitles online. Stored only on this device. */
+@Serializable
+data class OpenSubtitlesSettings(
+    val apiKey: String,
+    /** Optional; logged-in users get more downloads a day. */
+    val username: String? = null,
+    val password: String? = null,
+    /** Two-letter codes in order of preference; empty means the phone's language, then English. */
+    val languages: List<String> = emptyList(),
+)
+
 @Serializable
 data class AppConfig(
     /** Email of the Google account on this TV that the app signed in with. */
@@ -33,6 +44,7 @@ data class AppConfig(
     val serviceAccountEmail: String? = null,
     val folders: List<LibraryFolder> = emptyList(),
     val profiles: List<Profile> = emptyList(),
+    val openSubtitles: OpenSubtitlesSettings? = null,
 ) {
     /** Only one way of reaching Drive is active at a time; signing in with Google takes precedence. */
     val usesGoogleAccount: Boolean get() = !googleAccount.isNullOrBlank()

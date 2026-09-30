@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import com.iamtt.streaming.data.ConfigStore
 import com.iamtt.streaming.data.LibraryRepository
 import com.iamtt.streaming.data.MetadataRepository
+import com.iamtt.streaming.data.OnlineSubtitles
 import com.iamtt.streaming.data.ProfilePhotos
 import com.iamtt.streaming.data.WatchHistory
 import com.iamtt.streaming.drive.DriveAuth
@@ -34,6 +35,8 @@ class IamttApp : Application(), ImageLoaderFactory {
         private set
     lateinit var metadata: MetadataRepository
         private set
+    lateinit var onlineSubtitles: OnlineSubtitles
+        private set
     private lateinit var baseHttp: OkHttpClient
 
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -55,6 +58,7 @@ class IamttApp : Application(), ImageLoaderFactory {
         history = WatchHistory(this)
         photos = ProfilePhotos(this)
         metadata = MetadataRepository(this, baseHttp, appScope)
+        onlineSubtitles = OnlineSubtitles(this, baseHttp, drive, config)
     }
 
     /** Posters and stills; Wikimedia's image servers ask apps to identify themselves. */
