@@ -118,8 +118,8 @@ public class DownloadService extends Service {
             // fetchMagnet removes its temporary handle asynchronously. Do not
             // re-use a metadata-only handle paused by STOP_WHEN_READY.
             long removalDeadline=System.currentTimeMillis()+10000;
-            TorrentHandle pending=session.find(new Sha1Hash(item.hash));
-            while(active(item)&&pending!=null&&pending.isValid()&&System.currentTimeMillis()<removalDeadline){Thread.sleep(100);pending=session.find(new Sha1Hash(item.hash));}
+            TorrentHandle pending=session.find(Sha1Hash.parseHex(item.hash));
+            while(active(item)&&pending!=null&&pending.isValid()&&System.currentTimeMillis()<removalDeadline){Thread.sleep(100);pending=session.find(Sha1Hash.parseHex(item.hash));}
             if(pending!=null&&pending.isValid())throw new IOException("Metadata handle is still closing. Tap Resume to retry.");
             if(!active(item)) return;
             if(bytes==null) {
