@@ -264,8 +264,8 @@ public class MainActivity extends Activity {
     }
 
     private void episodes(JSONObject series){
-        activeSeries=series;generation++;tab="Episodes";int token=generation;body.removeAllViews();
-        body.addView(button("‹ Back to TV Shows",()->show("Discover")));title(series.optString("name","TV Show"));
+        activeSeries=series;activeMedia=series;generation++;tab="Episodes";int token=generation;body.removeAllViews();refreshNav();
+        brandBar();body.addView(button("‹ Back to TV Shows",()->show("Discover")));title(series.optString("name","TV Show"));
         LinearLayout hero=card();hero.setOrientation(LinearLayout.HORIZONTAL);
         ImageView p=posterView(100,150);hero.addView(p,new LinearLayout.LayoutParams(dp(100),dp(150)));loadImage(p,series.optString("poster"),token);
         LinearLayout hinfo=column();hinfo.setPadding(dp(14),0,0,0);hero.addView(hinfo,new LinearLayout.LayoutParams(0,-2,1));
@@ -302,10 +302,20 @@ public class MainActivity extends Activity {
     }
 
     private void sources(String type,String id,String displayTitle){
-        generation++;tab="Sources";int token=generation;body.removeAllViews();
+        generation++;tab="Sources";int token=generation;body.removeAllViews();refreshNav();
         sourceQuality="All";sourcePublisher="All";sourceSize="All";sourceSeeders="All";sourceSort="Best peers";currentStreams.clear();
         body.addView(button(type.equals("series")?"‹ Back to episodes":"‹ Back to movies",()->{if(type.equals("series")&&activeSeries!=null)episodes(activeSeries);else show("Discover");}));
-        title(displayTitle);note("Torrent health is a live swarm signal, not a guarantee. Prefer sources with more reported seeders.");
+        if(activeMedia!=null){
+            LinearLayout hero=column();hero.setPadding(0,dp(12),0,dp(10));
+            LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.TOP);
+            ImageView poster=posterView(92,138);row.addView(poster,new LinearLayout.LayoutParams(dp(92),dp(138)));loadImage(poster,activeMedia.optString("poster"),token);
+            LinearLayout info=column();info.setPadding(dp(14),0,0,0);row.addView(info,new LinearLayout.LayoutParams(0,-2,1));
+            TextView h=text(displayTitle,22,INK);h.setTypeface(null,Typeface.BOLD);info.addView(h);
+            int y=Protocol.year(activeMedia);String rating=activeMedia.optString("imdbRating","");
+            info.addView(text((y>0?String.valueOf(y):"")+(rating.isEmpty()?"":" · ★ "+rating),12,MUTED));
+            String desc=activeMedia.optString("description","");if(!desc.isEmpty()){TextView d=text(desc,13,MUTED);d.setMaxLines(4);d.setEllipsize(android.text.TextUtils.TruncateAt.END);info.addView(d);}
+            hero.addView(row);body.addView(hero);
+        }else title(displayTitle);
         TextView loading=text("Finding available sources…",14,MUTED);body.addView(loading);
         sourceArea=column();body.addView(sourceArea,new LinearLayout.LayoutParams(-1,-2));
         io.execute(()->{try{
@@ -321,16 +331,15 @@ public class MainActivity extends Activity {
 
     private void renderSourceArea(String type,String displayTitle){
         if(sourceArea==null)return;sourceArea.removeAllViews();if(currentStreams.isEmpty())return;
-        LinearLayout r1=new LinearLayout(this),r2=new LinearLayout(this);
+        HorizontalScrollView filters=new HorizontalScrollView(this);filters.setHorizontalScrollBarEnabled(false);
+        LinearLayout chips=new LinearLayout(this);chips.setOrientation(LinearLayout.HORIZONTAL);filters.addView(chips);
         Button q=button("Quality · "+sourceQuality,()->chooseSourceQuality(type,displayTitle));
         Button p=button("Source · "+sourcePublisher,()->chooseSourcePublisher(type,displayTitle));
-        r1.addView(q,new LinearLayout.LayoutParams(0,dp(46),1));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(0,dp(46),1);gp.leftMargin=dp(8);r1.addView(p,gp);
         Button s=button("Size · "+sourceSize,()->chooseSourceSize(type,displayTitle));
-        Button sort=button("Sort · "+sourceSort,()->chooseSourceSort(type,displayTitle));
-        r2.addView(s,new LinearLayout.LayoutParams(0,dp(46),1));LinearLayout.LayoutParams gs=new LinearLayout.LayoutParams(0,dp(46),1);gs.leftMargin=dp(8);r2.addView(sort,gs);
-        sourceArea.addView(r1);LinearLayout.LayoutParams rowGap=new LinearLayout.LayoutParams(-1,-2);rowGap.topMargin=dp(8);sourceArea.addView(r2,rowGap);
         Button seedFilter=button("Seeders · "+sourceSeeders,()->chooseSourceSeeders(type,displayTitle));
-        LinearLayout.LayoutParams seedGap=new LinearLayout.LayoutParams(-1,dp(46));seedGap.topMargin=dp(8);sourceArea.addView(seedFilter,seedGap);
+        Button sort=button("Sort · "+sourceSort,()->chooseSourceSort(type,displayTitle));
+        for(Button b:new Button[]{q,p,s,seedFilter,sort}){LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,dp(42));cp.rightMargin=dp(8);chips.addView(b,cp);}
+        sourceArea.addView(filters,new LinearLayout.LayoutParams(-1,dp(50)));
 
         List<JSONObject> list=new ArrayList<>();
         for(JSONObject stream:currentStreams){
@@ -395,12 +404,15 @@ public class MainActivity extends Activity {
         LinearLayout c=card(parent);
         String quality=Protocol.sourceQuality(stream),codec=Protocol.sourceCodec(stream),publisher=Protocol.sourcePublisher(stream);
         long bytes=Protocol.sourceSize(stream);int seeds=Protocol.reportedSeeders(stream);String health=Protocol.sourceHealth(stream);
-        TextView head=text(quality+(codec.isEmpty()?"":" · "+codec)+(bytes>0?" · "+size(bytes):""),18,INK);head.setTypeface(null,Typeface.BOLD);c.addView(head);
-        c.addView(text("Source: "+publisher+"   ·   Reported seeders: "+(seeds>=0?seeds:"not reported")+"   ·   Health: "+health,13,seeds==0?0xFFFF9F0A:MUTED));
+
+        LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);
+        TextView head=text(quality+(codec.isEmpty()?"":" · "+codec),16,INK);head.setTypeface(null,Typeface.BOLD);top.addView(head,new LinearLayout.LayoutParams(0,-2,1));
+        top.addView(text(bytes>0?size(bytes):"Unknown size",13,MUTED));c.addView(top);
+        c.addView(text(publisher+" · "+(seeds>=0?seeds+" seeders":"seeders not reported")+" · "+health,12,seeds==0?0xFFFF9F0A:MUTED));
         String raw=stream.optString("description",stream.optString("title",""));
-        if(!raw.isEmpty()){TextView d=text(raw,12,MUTED);d.setMaxLines(4);d.setEllipsize(android.text.TextUtils.TruncateAt.END);c.addView(d);}
+        if(!raw.isEmpty()){TextView d=text(raw,12,MUTED);d.setMaxLines(2);d.setEllipsize(android.text.TextUtils.TruncateAt.END);c.addView(d);}
         boolean torrent=stream.optString("infoHash").matches("(?i)[0-9a-f]{40}");
-        if(torrent)c.addView(button((seeds==0?"Try anyway · ":"↓ ")+"Download this "+(type.equals("series")?"episode":"movie"),()->enqueue(stream,displayTitle)));
+        if(torrent){Button dl=button(seeds==0?"Try anyway":"Download",()->enqueue(stream,displayTitle));dl.setBackground(rounded(BLUE,14));c.addView(dl,new LinearLayout.LayoutParams(-1,dp(44)));}
         else c.addView(text("Direct/debrid streams are not handled by this downloader build.",13,MUTED));
     }
 
@@ -410,39 +422,66 @@ public class MainActivity extends Activity {
     }
 
     private void showDownloads(){
-        title("Downloads");
-        Switch wifi=new Switch(this);wifi.setText("Download over Wi-Fi only");wifi.setTextColor(INK);wifi.setChecked(downloads.wifiOnly());
-        wifi.setPadding(0,dp(8),0,dp(14));wifi.setOnCheckedChangeListener((b,on)->downloads.wifiOnly(on));body.addView(wifi);
-        note("Completed files can be played, shared, or saved into your Movies / TV Shows library folders.");
-        if(downloads.all().isEmpty())note("Your downloads will appear here after you choose a source.");
-        for(DownloadStore.Item i:downloads.all()){
-            LinearLayout c=card();c.addView(text(i.title,18,INK));TextView status=text(progress(i),13,MUTED);c.addView(status);statuses.put(i.id,status);
-            ProgressBar bar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(1000);c.addView(bar);bars.put(i.id,bar);renderedStates.put(i.id,i.state);
+        brandBar();title("Downloads");
+
+        LinearLayout tabs=new LinearLayout(this);tabs.setPadding(0,dp(8),0,dp(12));
+        for(String name:new String[]{"All","Downloading","Completed","Paused"}){
+            Button b=selectedButton(name,name.equals(downloadFilter),()->{downloadFilter=name;show("Downloads");});
+            LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(40),1);if(tabs.getChildCount()>0)p.leftMargin=dp(6);tabs.addView(b,p);
+        }
+        body.addView(tabs);
+
+        Switch wifi=new Switch(this);wifi.setText("Wi-Fi only");wifi.setTextColor(MUTED);wifi.setChecked(downloads.wifiOnly());
+        wifi.setPadding(0,0,0,dp(12));wifi.setOnCheckedChangeListener((b,on)->downloads.wifiOnly(on));body.addView(wifi);
+
+        List<DownloadStore.Item> visible=new ArrayList<>();for(DownloadStore.Item i:downloads.all())if(downloadVisible(i))visible.add(i);
+        if(visible.isEmpty()){note(downloads.all().isEmpty()?"Your downloads will appear here after you choose a source.":"No downloads in this view.");return;}
+        for(DownloadStore.Item i:visible){
+            LinearLayout c=card();
+            LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);
+            TextView name=text(i.title,17,INK);name.setTypeface(null,Typeface.BOLD);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);top.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+            TextView state=text(downloadGroup(i),12,i.state.equals("Complete")?0xFF30D158:(i.state.equals("Error")?0xFFFF9F0A:BLUE));state.setGravity(Gravity.RIGHT);top.addView(state);c.addView(top);
+
+            TextView status=text(progress(i),12,MUTED);c.addView(status);statuses.put(i.id,status);
+            ProgressBar bar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(1000);c.addView(bar,new LinearLayout.LayoutParams(-1,dp(6)));bars.put(i.id,bar);renderedStates.put(i.id,i.state);
+
+            LinearLayout actions=new LinearLayout(this);actions.setPadding(0,dp(10),0,0);
             if(i.state.equals("Complete")){
-                c.addView(button("Play",()->open(i,false)));c.addView(button("Save a copy…",()->export(i)));c.addView(button("Share…",()->open(i,true)));
+                Button play=button("Play",()->open(i,false));Button save=button("Save a copy",()->export(i));
+                actions.addView(play,new LinearLayout.LayoutParams(0,dp(42),1));LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(42),1);ap.leftMargin=dp(8);actions.addView(save,ap);
             }else if(i.state.equals("Paused")||i.state.equals("Error")){
-                c.addView(button("Resume",()->{i.state="Queued";i.detail="";downloads.save();try{DownloadService.start(this);show("Downloads");}
-                    catch(Exception e){i.state="Paused";downloads.save();error("Could not restart. Reopen the app and try again.");}}));
-            }else c.addView(button("Pause",()->{i.state="Paused";i.speed=0;downloads.save();show("Downloads");}));
+                Button resume=button("Resume",()->{i.state="Queued";i.detail="";downloads.save();try{DownloadService.start(this);show("Downloads");}
+                    catch(Exception e){i.state="Paused";downloads.save();error("Could not restart. Reopen the app and try again.");}});
+                actions.addView(resume,new LinearLayout.LayoutParams(-1,dp(42)));
+            }else{
+                Button pause=button("Pause",()->{i.state="Paused";i.speed=0;downloads.save();show("Downloads");});
+                actions.addView(pause,new LinearLayout.LayoutParams(-1,dp(42)));
+            }
+            c.addView(actions);
         }
         refreshProgress();
     }
 
+    private String downloadGroup(DownloadStore.Item i){
+        if(i.state.equals("Complete"))return "Completed";
+        if(i.state.equals("Paused")||i.state.equals("Error"))return "Paused";
+        return "Downloading";
+    }
+    private boolean downloadVisible(DownloadStore.Item i){return downloadFilter.equals("All")||downloadFilter.equals(downloadGroup(i));}
+
     private String progress(DownloadStore.Item i){
-        long total=i.total>0?i.total:i.expectedTotal;
-        String source=(i.quality==null||i.quality.isEmpty()?"":i.quality)+(i.codec==null||i.codec.isEmpty()?"":" · "+i.codec)
-            +(i.sourcePublisher==null||i.sourcePublisher.isEmpty()?"":" · "+i.sourcePublisher);
-        String seedText=i.reportedSeeds>=0?String.valueOf(i.reportedSeeds):"not reported";
-        return i.state+"\nDownloaded: "+size(i.done)+" / "+(total>0?size(total):"unknown")
-            +"\nSpeed: "+size(i.speed)+"/s"
-            +"\nPeers: "+i.peers+" connected · "+seedText+" reported"
-            +(source.isEmpty()?"":"\nSource: "+source)
-            +"\n"+(i.detail==null?"":i.detail);
+        long total=i.total>0?i.total:i.expectedTotal;String seedText=i.reportedSeeds>=0?String.valueOf(i.reportedSeeds):"—";
+        long percent=total>0?Math.min(100,100*i.done/total):0;
+        String first=size(i.done)+" / "+(total>0?size(total):"unknown")+" · "+size(i.speed)+"/s · "+percent+"%";
+        String second="Peers "+i.peers+" · Seeders "+seedText;
+        String detail=i.detail==null?"":i.detail;
+        return first+"\n"+second+(detail.isEmpty()?"":"\n"+detail);
     }
     private static String size(long n){if(n<=0)return "0 MB";return String.format(Locale.US,n>=1073741824?"%.2f GB":"%.1f MB",n/(n>=1073741824?1073741824.0:1048576.0));}
 
     private void refreshProgress(){
         for(DownloadStore.Item i:downloads.all()){
+            if(!downloadVisible(i))continue;
             String old=renderedStates.get(i.id);boolean oldControls="Complete".equals(old)||"Paused".equals(old)||"Error".equals(old);
             boolean controls=i.state.equals("Complete")||i.state.equals("Paused")||i.state.equals("Error");
             if(old==null||(!i.state.equals(old)&&(oldControls||controls))){show("Downloads");return;}
