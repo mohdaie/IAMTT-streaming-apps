@@ -102,7 +102,18 @@ public class NativeEngineTest {
             until=System.currentTimeMillis()+20000;while(store.find(job.id)!=null&&System.currentTimeMillis()<until)Thread.sleep(100);
             assertNull("Deletion stops the active transfer and removes the entry",store.find(job.id));
             assertFalse("Partial files are deleted",ownedRoot.exists());
-            assertTrue("Other files in the selected folder are kept",neighbour.isFile());neighbour.delete();new File(store.folder()).delete();
+            assertTrue("Other files in the selected folder are kept",neighbour.isFile());neighbour.delete();
+            File oldPrivate=new File(new File(context.getFilesDir(),"downloads"),info.infoHash().toHex()+"/legacy.mp4");assertTrue(oldPrivate.getParentFile().mkdirs());
+            byte[] legacyBytes={4,5,6,7};Files.write(oldPrivate.toPath(),legacyBytes);
+            DownloadStore.Item legacy=store.add(stream,"Earlier completed video");legacy.path=oldPrivate.getAbsolutePath();legacy.total=legacyBytes.length;legacy.done=legacyBytes.length;legacy.state="Complete";store.save();
+            store.move(legacy);activity.onActivity(a->DownloadService.start(a));
+            until=System.currentTimeMillis()+20000;while(legacy.moveRequested&&System.currentTimeMillis()<until)Thread.sleep(100);
+            assertEquals("Complete",legacy.state);assertFalse("Private original removed after successful move",oldPrivate.exists());
+            assertTrue("Moved video is in selected shared folder",legacy.path.startsWith(store.folder()+"/"));
+            assertArrayEquals(legacyBytes,Files.readAllBytes(new File(legacy.path).toPath()));
+            store.delete(legacy);activity.onActivity(a->DownloadService.start(a));
+            until=System.currentTimeMillis()+20000;while(store.find(legacy.id)!=null&&System.currentTimeMillis()<until)Thread.sleep(100);
+            assertNull("Completed entry deleted",store.find(legacy.id));assertFalse("Completed video deleted",new File(legacy.path).exists());new File(store.folder()).delete();
         }finally{
             if(job!=null){job.state="Paused";store.save();}
             Thread.sleep(1500);context.stopService(new android.content.Intent(context,DownloadService.class));
