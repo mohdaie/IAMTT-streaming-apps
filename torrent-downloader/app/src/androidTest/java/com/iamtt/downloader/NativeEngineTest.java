@@ -52,7 +52,12 @@ public class NativeEngineTest {
     }
     @Test public void foregroundServiceKeepsTransferringWhileScreenIsOpen() throws Exception {
         android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        try(android.os.ParcelFileDescriptor permission=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("appops set com.iamtt.downloader MANAGE_EXTERNAL_STORAGE allow")){
+            try(InputStream response=new android.os.ParcelFileDescriptor.AutoCloseInputStream(permission)){while(response.read()!=-1){}}
+        }
+        assertTrue("Shared file permission granted",DownloadFiles.allowed(context));
         DownloadStore store=DownloadStore.get(context);store.pauseAll();store.wifiOnly(false);
+        store.folder(DownloadFiles.defaultFolder()+"/service-test-"+System.nanoTime());
         File root=new File(context.getCacheDir(),"service-test-"+System.nanoTime());assertTrue(root.mkdirs());
         byte[] original=new byte[8*1024*1024];new Random(System.nanoTime()).nextBytes(original);
         File video=new File(root,"service-fixture.mp4");Files.write(video.toPath(),original);
@@ -90,6 +95,14 @@ public class NativeEngineTest {
             }
             assertTrue("Data must continue increasing",job.done>before);
             assertEquals("Downloading",job.state);
+            assertTrue("Bytes are written directly to the configured public folder",job.path.startsWith(store.folder()+"/"));
+            assertTrue("Public download file exists",new File(job.path).isFile());
+            File ownedRoot=new File(job.folder);File neighbour=new File(store.folder(),"keep.txt");Files.write(neighbour.toPath(),new byte[]{1,2,3});
+            store.delete(job);activity.onActivity(a->DownloadService.start(a));
+            until=System.currentTimeMillis()+20000;while(store.find(job.id)!=null&&System.currentTimeMillis()<until)Thread.sleep(100);
+            assertNull("Deletion stops the active transfer and removes the entry",store.find(job.id));
+            assertFalse("Partial files are deleted",ownedRoot.exists());
+            assertTrue("Other files in the selected folder are kept",neighbour.isFile());neighbour.delete();new File(store.folder()).delete();
         }finally{
             if(job!=null){job.state="Paused";store.save();}
             Thread.sleep(1500);context.stopService(new android.content.Intent(context,DownloadService.class));

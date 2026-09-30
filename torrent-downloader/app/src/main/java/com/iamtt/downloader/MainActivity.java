@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
         nav=new LinearLayout(this);nav.setPadding(dp(10),dp(6),dp(10),dp(8));nav.setBackgroundColor(0xFF080808);root.addView(nav);
-        for(String name:new String[]{"Discover","Downloads","Addons"}) {
+        for(String name:new String[]{"Discover","Downloads","Addons","Settings"}) {
             Button b=navButton(name,()->show(name));navButtons.put(name,b);nav.addView(b,new LinearLayout.LayoutParams(0,dp(48),1));
         }
 
@@ -76,7 +76,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleIntent(intent);}
     private void handleIntent(Intent i){if(i.getData()!=null && "stremio".equals(i.getData().getScheme())){show("Addons");installDialog(i.getData().toString());}}
-    @Override protected void onResume(){super.onResume();main.post(ticker);}
+    @Override protected void onResume(){super.onResume();main.post(ticker);if(tab.equals("Settings"))show("Settings");}
     @Override protected void onPause(){main.removeCallbacks(ticker);super.onPause();}
     @Override protected void onSaveInstanceState(Bundle b){b.putString("exporting",exporting);super.onSaveInstanceState(b);}
     @Override protected void onDestroy(){generation++;io.shutdownNow();artwork.evictAll();super.onDestroy();}
@@ -116,7 +116,7 @@ public class MainActivity extends Activity {
 
     private void show(String name){
         tab=name;generation++;body.removeAllViews();statuses.clear();bars.clear();renderedStates.clear();refreshNav();
-        if(name.equals("Addons"))showAddons();else if(name.equals("Downloads"))showDownloads();else discover();
+        if(name.equals("Addons"))showAddons();else if(name.equals("Downloads"))showDownloads();else if(name.equals("Settings"))showSettings();else discover();
     }
 
     private void brandBar(){
@@ -125,6 +125,42 @@ public class MainActivity extends Activity {
         row.addView(logo,new LinearLayout.LayoutParams(0,dp(40),1));
         TextView version=text("v"+BuildConfig.VERSION_NAME,11,MUTED);version.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);row.addView(version,new LinearLayout.LayoutParams(dp(90),dp(40)));
         body.addView(row);
+    }
+
+    private void showSettings(){
+        brandBar();title("Settings");
+        LinearLayout c=card();c.addView(text("Download folder",20,INK));c.addView(text(downloads.folder(),14,MUTED));
+        c.addView(text("Videos download directly here. You can open them in your file manager; no Save a copy step is required. Changing this folder applies to new downloads.",14,MUTED));
+        c.addView(button("Choose folder",()->{
+            if(!DownloadFiles.allowed(this)){allowFiles();return;}
+            Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);pick.putExtra("android.provider.extra.INITIAL_URI",Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload"));
+            startActivityForResult(pick,43);
+        }));
+        if(!DownloadFiles.allowed(this)){c.addView(text("File access is required to download directly to shared folders.",14,MUTED));c.addView(button("Allow file access",this::allowFiles));}
+        boolean legacy=false;for(DownloadStore.Item i:downloads.all())if(DownloadFiles.privateVideo(this,i)&&i.state.equals("Complete"))legacy=true;
+        if(legacy){
+            LinearLayout old=card();old.addView(text("Earlier downloads",20,INK));old.addView(text("Move completed videos from the old private location into your download folder. The private originals are removed after each move succeeds.",14,MUTED));
+            old.addView(button("Move existing videos here",()->{
+                if(!DownloadFiles.allowed(this)){allowFiles();return;}
+                for(DownloadStore.Item i:downloads.all())if(DownloadFiles.privateVideo(this,i)&&i.state.equals("Complete"))downloads.move(i);
+                DownloadService.start(this);show("Downloads");
+            }));
+        }
+    }
+    private void allowFiles(){
+        if(Build.VERSION.SDK_INT>=30)try{startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,Uri.parse("package:"+getPackageName())));}
+        catch(ActivityNotFoundException e){startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));}
+        else requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},44);
+    }
+    private void setFolder(Uri uri)throws Exception{
+        if(!"com.android.externalstorage.documents".equals(uri.getAuthority()))throw new IOException("Choose a folder on this phone or an attached local drive.");
+        String id=android.provider.DocumentsContract.getTreeDocumentId(uri);int colon=id.indexOf(':');if(colon<0)throw new IOException("Could not read that folder.");
+        String volume=id.substring(0,colon),relative=id.substring(colon+1);
+        File base="primary".equalsIgnoreCase(volume)?Environment.getExternalStorageDirectory():new File("/storage",volume);
+        File folder=DownloadFiles.folder(new File(base,relative).getPath());
+        if(!folder.isDirectory()&&!folder.mkdirs())throw new IOException("Cannot create that folder.");
+        File probe=File.createTempFile("iamtt-access-",".tmp",folder);if(!probe.delete())throw new IOException("Cannot remove files in that folder.");
+        downloads.folder(folder.getAbsolutePath());show("Settings");Toast.makeText(this,"Download folder updated",Toast.LENGTH_SHORT).show();
     }
 
     private void showAddons(){
@@ -489,6 +525,7 @@ public class MainActivity extends Activity {
     }
 
     private void enqueue(JSONObject stream,String title){
+        if(!DownloadFiles.allowed(this)){show("Settings");Toast.makeText(this,"Allow file access before downloading",Toast.LENGTH_LONG).show();return;}
         try{downloads.add(stream,title);DownloadService.start(this);show("Downloads");}
         catch(Exception e){error(e instanceof IllegalArgumentException?e.getMessage():"Could not start the download. Check notification permissions and retry from Downloads.");}
     }
@@ -525,11 +562,13 @@ public class MainActivity extends Activity {
             ProgressBar bar=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(1000);c.addView(bar,new LinearLayout.LayoutParams(-1,dp(6)));bars.put(i.id,bar);renderedStates.put(i.id,i.state);
 
             LinearLayout actions=new LinearLayout(this);actions.setPadding(0,dp(10),0,0);
-            if(i.state.equals("Complete")){
+            if(i.deleteRequested||i.moveRequested){
+                actions.addView(text(i.deleteRequested?"Stopping transfer and deleting…":"Moving to your download folder…",13,MUTED));
+            }else if(i.state.equals("Complete")){
                 Button play=button("Play",()->open(i,false));Button save=button("Save a copy",()->export(i));
                 actions.addView(play,new LinearLayout.LayoutParams(0,dp(42),1));LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(42),1);ap.leftMargin=dp(8);actions.addView(save,ap);
             }else if(i.state.equals("Paused")||i.state.equals("Error")){
-                Button resume=button("Resume",()->{i.state="Queued";i.detail="";downloads.save();try{DownloadService.start(this);show("Downloads");}
+                Button resume=button("Resume",()->{if(!DownloadFiles.allowed(this)){show("Settings");return;}i.state="Queued";i.detail="";downloads.save();try{DownloadService.start(this);show("Downloads");}
                     catch(Exception e){i.state="Paused";downloads.save();error("Could not restart. Reopen the app and try again.");}});
                 actions.addView(resume,new LinearLayout.LayoutParams(-1,dp(42)));
             }else{
@@ -537,6 +576,14 @@ public class MainActivity extends Activity {
                 actions.addView(pause,new LinearLayout.LayoutParams(-1,dp(42)));
             }
             c.addView(actions);
+            if(!i.path.isEmpty())c.addView(text("File: "+i.path,11,MUTED));
+            if(!i.deleteRequested&&!i.moveRequested){
+                Button delete=button("Delete",()->new AlertDialog.Builder(this).setTitle("Delete download?")
+                    .setMessage("Remove this entry and its downloaded or partial files? Copies saved elsewhere are kept.")
+                    .setPositiveButton("Delete",(dialog,which)->{downloads.delete(i);DownloadService.start(this);show("Downloads");})
+                    .setNegativeButton("Cancel",null).show());
+                delete.setTextColor(0xFFFF453A);LinearLayout.LayoutParams del=new LinearLayout.LayoutParams(-1,dp(38));del.topMargin=dp(8);c.addView(delete,del);
+            }
         }
         refreshProgress();
     }
@@ -560,10 +607,11 @@ public class MainActivity extends Activity {
     private static String size(long n){if(n<=0)return "0 MB";return String.format(Locale.US,n>=1073741824?"%.2f GB":"%.1f MB",n/(n>=1073741824?1073741824.0:1048576.0));}
 
     private void refreshProgress(){
+        int count=0;for(DownloadStore.Item i:downloads.all())if(downloadVisible(i))count++;if(count!=renderedStates.size()){show("Downloads");return;}
         for(DownloadStore.Item i:downloads.all()){
             if(!downloadVisible(i))continue;
-            String old=renderedStates.get(i.id);boolean oldControls="Complete".equals(old)||"Paused".equals(old)||"Error".equals(old);
-            boolean controls=i.state.equals("Complete")||i.state.equals("Paused")||i.state.equals("Error");
+            String old=renderedStates.get(i.id);boolean oldControls="Deleting".equals(old)||"Moving".equals(old)||"Complete".equals(old)||"Paused".equals(old)||"Error".equals(old);
+            boolean controls=i.state.equals("Deleting")||i.state.equals("Moving")||i.state.equals("Complete")||i.state.equals("Paused")||i.state.equals("Error");
             if(old==null||(!i.state.equals(old)&&(oldControls||controls))){show("Downloads");return;}
             TextView t=statuses.get(i.id);if(t!=null)t.setText(progress(i));ProgressBar b=bars.get(i.id);
             if(b!=null){long total=i.total>0?i.total:i.expectedTotal;b.setIndeterminate(total==0&&!i.state.equals("Error")&&!i.state.equals("Paused"));b.setProgress(total>0?(int)Math.min(1000,1000*i.done/total):0);}
@@ -593,7 +641,9 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onActivityResult(int request,int result,Intent data){
-        super.onActivityResult(request,result,data);if(request!=42||result!=RESULT_OK||data==null||data.getData()==null||exporting==null)return;
+        super.onActivityResult(request,result,data);
+        if(request==43){if(result==RESULT_OK&&data!=null&&data.getData()!=null)try{setFolder(data.getData());}catch(Exception e){error(e.getMessage());}return;}
+        if(request!=42||result!=RESULT_OK||data==null||data.getData()==null||exporting==null)return;
         String path=exporting;exporting=null;Uri destination=data.getData();Toast.makeText(this,"Saving copy—keep the app open…",Toast.LENGTH_LONG).show();
         io.execute(()->{try(InputStream in=new FileInputStream(path);OutputStream out=getContentResolver().openOutputStream(destination,"w")){
             if(out==null)throw new IOException();byte[] buffer=new byte[262144];int count;while((count=in.read(buffer))!=-1){if(Thread.currentThread().isInterrupted())throw new IOException();out.write(buffer,0,count);}

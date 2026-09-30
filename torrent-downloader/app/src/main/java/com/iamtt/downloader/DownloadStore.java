@@ -8,7 +8,8 @@ public final class DownloadStore {
     public static final class Item {
         public final String id, hash, title, magnet;
         public final int requested;
-        public volatile String state, detail, path = "";
+        public volatile String state, detail, path = "", folder = "";
+        public volatile boolean deleteRequested, moveRequested;
         public volatile long done, total, expectedTotal, speed;
         public volatile int peers, seeds, reportedSeeds=-1;
         public volatile String sourcePublisher="", quality="", codec="";
@@ -36,6 +37,8 @@ public final class DownloadStore {
                 JSONObject j=a.getJSONObject(i);
                 Item item=new Item(j.getString("hash"),j.getString("title"),j.getString("magnet"),j.getInt("requested"),
                     "Complete".equals(j.optString("state")) ? "Complete" : "Paused");
+                item.folder=j.optString("folder");item.deleteRequested=j.optBoolean("deleteRequested");item.moveRequested=j.optBoolean("moveRequested");
+                if(item.deleteRequested)item.state="Deleting";else if(item.moveRequested)item.state="Moving";
                 item.path=j.optString("path"); item.done=j.optLong("done"); item.total=j.optLong("total");
                 item.expectedTotal=j.optLong("expectedTotal"); item.reportedSeeds=j.optInt("reportedSeeds",-1);
                 item.sourcePublisher=j.optString("sourcePublisher"); item.quality=j.optString("quality"); item.codec=j.optString("codec");
@@ -65,6 +68,7 @@ public final class DownloadStore {
         JSONArray a=new JSONArray();
         for(Item i:items.values()) try {
             a.put(new JSONObject().put("hash",i.hash).put("title",i.title).put("magnet",i.magnet)
+                .put("folder",i.folder).put("deleteRequested",i.deleteRequested).put("moveRequested",i.moveRequested)
                 .put("requested",i.requested).put("state",i.state).put("path",i.path).put("done",i.done).put("total",i.total)
                 .put("expectedTotal",i.expectedTotal).put("reportedSeeds",i.reportedSeeds)
                 .put("sourcePublisher",i.sourcePublisher).put("quality",i.quality).put("codec",i.codec));
@@ -73,9 +77,15 @@ public final class DownloadStore {
     }
 
     public synchronized void pauseAll() {
-        for(Item i:items.values()) if (!i.state.equals("Complete")) {i.state="Paused";i.speed=0;}
+        for(Item i:items.values()) if (!i.state.equals("Complete")&&!i.deleteRequested&&!i.moveRequested) {i.state="Paused";i.speed=0;}
         save();
     }
+
+    public String folder(){return prefs.getString("folder",DownloadFiles.defaultFolder());}
+    public void folder(String path){prefs.edit().putString("folder",path).apply();}
+    public synchronized void remove(String id){items.remove(id);save();}
+    public synchronized void delete(Item item){item.deleteRequested=true;item.state="Deleting";item.speed=0;save();}
+    public synchronized void move(Item item){item.moveRequested=true;item.state="Moving";save();}
 
     public boolean wifiOnly() { return prefs.getBoolean("wifiOnly",true); }
     public void wifiOnly(boolean value) { prefs.edit().putBoolean("wifiOnly",value).apply(); }

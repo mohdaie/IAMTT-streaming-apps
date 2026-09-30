@@ -59,7 +59,7 @@ public class DownloadService extends Service {
             && (!store.wifiOnly() || n.hasTransport(NetworkCapabilities.TRANSPORT_WIFI));
     }
     private boolean active(DownloadStore.Item i) {
-        return !destroyed && !i.state.equals("Paused") && !i.state.equals("Complete") && !i.state.equals("Error");
+        return !destroyed && !i.deleteRequested && !i.state.equals("Paused") && !i.state.equals("Complete") && !i.state.equals("Error");
     }
     private void waitForNetwork(DownloadStore.Item item) throws InterruptedException {
         while(active(item) && !allowedNetwork()) {
@@ -73,6 +73,15 @@ public class DownloadService extends Service {
         try {
             wake.acquire(6*60*60*1000L);
             while(!destroyed) {
+                // All deletion/move work happens on the native-session owner.
+                boolean maintenance=false;for(DownloadStore.Item i:store.all())if(i.deleteRequested||i.moveRequested)maintenance=true;
+                if(maintenance){
+                    if(session!=null){session.stop();session=null;}
+                    for(DownloadStore.Item i:store.all())if(i.deleteRequested||i.moveRequested)try{
+                        if(i.deleteRequested)DownloadFiles.delete(this,store,i);
+                        else{if(!DownloadFiles.allowed(this))throw new IOException("Allow file access in Settings to move the video.");DownloadFiles.moveCompleted(this,store,i);}
+                    }catch(Exception e){boolean moving=i.moveRequested;i.deleteRequested=false;i.moveRequested=false;i.state=moving?"Complete":"Error";i.detail=e.getMessage();store.save();}
+                }
                 DownloadStore.Item next=null;
                 synchronized(this) {
                     for(DownloadStore.Item i:store.all()) if(i.state.equals("Queued")) {next=i;break;}
@@ -89,7 +98,7 @@ public class DownloadService extends Service {
             synchronized(this) {
                 running=false;
                 boolean queued=false;
-                for(DownloadStore.Item i:store.all()) if(i.state.equals("Queued")) queued=true;
+                for(DownloadStore.Item i:store.all()) if(i.state.equals("Queued")||i.deleteRequested||i.moveRequested) queued=true;
                 if(queued && !destroyed) {running=true;worker.execute(this::runQueue);}
                 else {stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
             }
@@ -98,11 +107,14 @@ public class DownloadService extends Service {
     private void runOne(DownloadStore.Item item) {
         TorrentHandle handle=null;
         try {
+            if(!DownloadFiles.allowed(this))throw new IOException("Open Settings and allow file access before downloading.");
             waitForNetwork(item); if(!active(item)) return;
             if(session==null) {
                 session=new SessionManager();
                 SettingsPack settings=new SettingsPack();
                 settings.setEnableDht(true);settings.setEnableLsd(true);
+                // Use regular writes instead of memory-mapped writes on shared FUSE storage.
+                settings.setInteger(org.libtorrent4j.swig.settings_pack.int_types.disk_write_mode.swigValue(),0);
                 CrashReports.checkpoint(this,"starting session");
                 session.start(new SessionParams(settings));
             }
@@ -110,7 +122,7 @@ public class DownloadService extends Service {
             item.detail=item.reportedSeeds>=0
                 ?"Fetching torrent metadata · "+item.reportedSeeds+" seeders reported by the addon. Up to 90 seconds."
                 :"Fetching torrent metadata · addon did not report seeders. Up to 90 seconds.";
-            File root=new File(new File(getFilesDir(),"downloads"),item.hash);
+            File root=DownloadFiles.root(store,item);
             if(!root.exists() && !root.mkdirs()) throw new IOException("Cannot create the download folder.");
             File metadata=new File(getFilesDir(),item.hash+".torrent");
             CrashReports.checkpoint(this,"fetching metadata");
@@ -153,6 +165,8 @@ public class DownloadService extends Service {
             int tick=0;
             while(active(item)) {
                 waitForNetwork(item); if(!active(item)) break;
+                boolean maintenance=false;for(DownloadStore.Item other:store.all())if(other.deleteRequested||other.moveRequested)maintenance=true;
+                if(maintenance){item.state="Queued";break;}
                 CrashReports.checkpoint(this,"reading torrent status");
                 TorrentStatus status=handle.status(true);
                 if(status.errorCode().isError()) throw new IOException("The torrent engine reported a file or network error. Check storage and retry.");
@@ -160,7 +174,7 @@ public class DownloadService extends Service {
                 CrashReports.checkpoint(this,"transferring peers="+item.peers+" bytes="+item.done);
                 item.state="Downloading";item.detail=item.peers==0?"Waiting for peers. Availability depends on the source.":"Downloading selected video";
                 if(status.isFinished() && item.done>=item.total && output.exists()) {
-                    item.state="Complete";item.speed=0;item.detail="Ready to play or save a copy."; break;
+                    item.state="Complete";item.speed=0;item.detail="Saved in "+root.getParent(); break;
                 }
                 if(++tick%3==0) {
                     store.save();
@@ -170,7 +184,7 @@ public class DownloadService extends Service {
                 Thread.sleep(1000);
             }
         } catch(Exception e) {
-            if(!item.state.equals("Paused")) {item.state="Error";item.detail=e instanceof IOException||e instanceof IllegalArgumentException?e.getMessage():"Download interrupted. Tap Resume to recheck and continue.";}
+            if(!item.deleteRequested&&!item.state.equals("Paused")) {item.state="Error";item.detail=e instanceof IOException||e instanceof IllegalArgumentException?e.getMessage():"Download interrupted. Tap Resume to recheck and continue.";}
         } finally {
             // Keep data on pause/completion. Re-adding checks existing pieces before continuing.
             try{if(handle!=null && handle.isValid() && session!=null) {handle.pause();session.remove(handle);}}
