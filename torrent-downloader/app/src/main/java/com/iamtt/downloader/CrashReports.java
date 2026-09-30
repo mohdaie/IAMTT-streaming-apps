@@ -36,8 +36,9 @@ public final class CrashReports extends Application {
                 for(ApplicationExitInfo e:exits){
                     out.append("\nProcess exit · ").append(new Date(e.getTimestamp())).append("\n")
                         .append(reason(e.getReason())).append(" · status ").append(e.getStatus()).append("\n")
+                        .append(redact(String.valueOf(e.getDescription()))).append("\n")
                         .append("Memory at exit: ").append(e.getPss()).append(" KB PSS\n");
-                    if(e.getReason()==ApplicationExitInfo.REASON_CRASH_NATIVE || e.getReason()==ApplicationExitInfo.REASON_ANR){
+                    if(e.getReason()==ApplicationExitInfo.REASON_ANR){
                         try(InputStream trace=e.getTraceInputStream()){
                             if(trace!=null){byte[] bytes=new byte[32768];int count=0,n;while(count<bytes.length&&(n=trace.read(bytes,count,bytes.length-count))>0)count+=n;out.append(redact(new String(bytes,0,count,java.nio.charset.StandardCharsets.UTF_8))).append("\n");}
                         }catch(Exception ignored){out.append("Native trace unavailable.\n");}

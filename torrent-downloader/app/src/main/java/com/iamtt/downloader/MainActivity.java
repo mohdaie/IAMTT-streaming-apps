@@ -23,7 +23,9 @@ public class MainActivity extends Activity {
     private LinearLayout root,body,nav;
     private final ExecutorService io=Executors.newFixedThreadPool(6);
     private final Handler main=new Handler(Looper.getMainLooper());
-    private final LruCache<String,Bitmap> artwork=new LruCache<>(40);
+    private final LruCache<String,Bitmap> artwork=new LruCache<String,Bitmap>(12*1024*1024){
+        @Override protected int sizeOf(String key,Bitmap image){return image.getAllocationByteCount();}
+    };
     private String tab="Discover",query="",mediaType="movie";
     private List<JSONObject> catalogueChoices=new ArrayList<>();
     private int catalogueIndex=0,nextSkip=0;
@@ -77,7 +79,8 @@ public class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();main.post(ticker);}
     @Override protected void onPause(){main.removeCallbacks(ticker);super.onPause();}
     @Override protected void onSaveInstanceState(Bundle b){b.putString("exporting",exporting);super.onSaveInstanceState(b);}
-    @Override protected void onDestroy(){generation++;io.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){generation++;io.shutdownNow();artwork.evictAll();super.onDestroy();}
+    @Override public void onTrimMemory(int level){super.onTrimMemory(level);if(level>=android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)artwork.evictAll();}
 
     private LinearLayout column(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);return c;}
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
@@ -313,7 +316,10 @@ public class MainActivity extends Activity {
         if(url==null||!url.startsWith("https://"))return;
         Bitmap cached=artwork.get(url);if(cached!=null){target.setImageBitmap(cached);return;}
         io.execute(()->{try{
-            byte[] bytes=addons.image(url);Bitmap bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length);if(bitmap==null)return;artwork.put(url,bitmap);
+            byte[] bytes=addons.image(url);BitmapFactory.Options opts=new BitmapFactory.Options();opts.inJustDecodeBounds=true;
+            BitmapFactory.decodeByteArray(bytes,0,bytes.length,opts);opts.inSampleSize=1;
+            while(opts.outWidth/opts.inSampleSize>512 || opts.outHeight/opts.inSampleSize>768)opts.inSampleSize*=2;
+            opts.inJustDecodeBounds=false;Bitmap bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length,opts);if(bitmap==null)return;artwork.put(url,bitmap);
             main.post(()->{if(token==generation&&!isDestroyed())target.setImageBitmap(bitmap);});
         }catch(Exception ignored){}});
     }
