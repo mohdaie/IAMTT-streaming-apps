@@ -35,7 +35,7 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: gradle -p torrent-downloader :app:connectedDebugAndroidTest --no-daemon --stacktrace
+          script: sh torrent-downloader/verify-device.sh
       - name: Prepare separate APK
         run: |
           mkdir -p downloader-out
