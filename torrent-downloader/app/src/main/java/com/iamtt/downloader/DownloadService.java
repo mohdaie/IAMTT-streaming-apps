@@ -110,7 +110,7 @@ public class DownloadService extends Service {
             item.detail=item.reportedSeeds>=0
                 ?"Fetching torrent metadata · "+item.reportedSeeds+" seeders reported by the addon. Up to 90 seconds."
                 :"Fetching torrent metadata · addon did not report seeders. Up to 90 seconds.";
-            File root=new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),item.hash);
+            File root=new File(new File(getFilesDir(),"downloads"),item.hash);
             if(!root.exists() && !root.mkdirs()) throw new IOException("Cannot create the download folder.");
             File metadata=new File(getFilesDir(),item.hash+".torrent");
             CrashReports.checkpoint(this,"fetching metadata");
