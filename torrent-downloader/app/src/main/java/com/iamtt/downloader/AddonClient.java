@@ -49,40 +49,41 @@ public final class AddonClient {
         public final List<String> errors = new ArrayList<>();
     }
 
-    public Results catalog(String type, String query) throws Exception {
-        JSONArray installed = installed();
-        Results result = new Results();
-        Set<String> seen = new HashSet<>();
-        int requests = 0;
-        for (int i = 0; i < installed.length(); i++) {
-            JSONObject addon = installed.getJSONObject(i), manifest = addon.getJSONObject("manifest");
-            if (!Protocol.resource(manifest, "catalog", type, null)) continue;
-            JSONArray catalogs = manifest.optJSONArray("catalogs");
-            if (catalogs == null) continue;
-            for (int j = 0; j < catalogs.length() && requests < 8; j++) {
-                JSONObject catalog = catalogs.getJSONObject(j);
-                if (!type.equals(catalog.optString("type"))) continue;
-                if (query.isEmpty() ? !Protocol.browsable(catalog) : !Protocol.searchable(catalog)) continue;
-                requests++;
-                try {
-                    String url = Protocol.base(addon.getString("url")) + "/catalog/" + Protocol.encode(type) + "/" + Protocol.encode(catalog.getString("id"));
-                    url += query.isEmpty() ? ".json" : "/search=" + Protocol.encode(query) + ".json";
-                    JSONArray metas = get(url).optJSONArray("metas");
-                    if (metas != null) for (int k = 0; k < metas.length() && result.items.size() < 120; k++) {
-                        JSONObject media = metas.getJSONObject(k);
-                        String id = media.optString("id");
-                        if (!id.isEmpty() && seen.add(type + ":" + id)) {
-                            if (media.optString("type").isEmpty()) media.put("type", type);
-                            result.items.add(media);
-                        }
-                    }
-                } catch (Exception e) {
-                    result.errors.add(manifest.optString("name") + ": catalogue unavailable. Try again.");
-                }
+    public List<JSONObject> catalogs(String type, boolean search) throws Exception {
+        List<JSONObject> list=new ArrayList<>(); JSONArray all=installed();
+        for(int i=0;i<all.length();i++) {
+            JSONObject addon=all.getJSONObject(i), manifest=addon.getJSONObject("manifest");
+            if(!Protocol.resource(manifest,"catalog",type,null))continue;
+            JSONArray cs=manifest.optJSONArray("catalogs");if(cs==null)continue;
+            for(int j=0;j<cs.length();j++) {
+                JSONObject c=cs.getJSONObject(j);
+                if(!type.equals(c.optString("type")) || (search?!Protocol.searchable(c):!Protocol.browsable(c)))continue;
+                list.add(new JSONObject(c.toString()).put("addonUrl",addon.getString("url"))
+                    .put("label",manifest.optString("name")+" · "+c.optString("name",c.optString("id"))));
             }
         }
-        if (requests == 0) result.errors.add("Install a " + ("series".equals(type) ? "TV" : "movie") + " catalogue addon to browse and search.");
+        return list;
+    }
+    public Results catalog(JSONObject catalog,String type,String query,int skip,String genre) throws Exception {
+        Results result=new Results();
+        String url=Protocol.base(catalog.getString("addonUrl"))+"/catalog/"+Protocol.encode(type)+"/"+Protocol.encode(catalog.getString("id"));
+        List<String> extras=new ArrayList<>();
+        if(!query.isEmpty())extras.add("search="+Protocol.encode(query));
+        if(skip>0)extras.add("skip="+skip);
+        if(!genre.isEmpty())extras.add("genre="+Protocol.encode(genre));
+        url+=(extras.isEmpty()?"":"/"+String.join("&",extras))+".json";
+        JSONArray metas=get(url).optJSONArray("metas");
+        if(metas!=null)for(int i=0;i<metas.length();i++) {
+            JSONObject m=metas.getJSONObject(i);if(m.optString("id").isEmpty())continue;
+            if(m.optString("type").isEmpty())m.put("type",type);result.items.add(m);
+        }
         return result;
+    }
+    public static boolean supports(JSONObject c,String key) {
+        JSONArray es=c.optJSONArray("extra");if(es!=null)for(int i=0;i<es.length();i++)
+            if(es.optJSONObject(i)!=null&&key.equals(es.optJSONObject(i).optString("name")))return true;
+        JSONArray old=c.optJSONArray("extraSupported");if(old!=null)for(int i=0;i<old.length();i++)if(key.equals(old.optString(i)))return true;
+        return false;
     }
 
     public JSONObject meta(String type, String id) throws Exception {

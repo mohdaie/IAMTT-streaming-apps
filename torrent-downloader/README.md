@@ -93,3 +93,15 @@ export still require a phone test before this should be called production-ready.
 libtorrent4j 2.1.0-39 (MIT), libtorrent (BSD), OkHttp (Apache-2.0), AndroidX (Apache-2.0).
 The native distributions contain additional libraries; retain their upstream
 license notices when distributing a production build.
+
+## Expanded discovery
+
+The Watch screen uses the solid IAMTT wordmark. Choose any compatible installed
+catalogue from the selector, browse its full loaded poster grid, and use **Load
+more titles** when it advertises paging. Genre is sent to the catalogue when
+supported. Filters combine available scalar and list metadata attributes (year,
+genres, rating, runtime, language, country, cast, director and other supplied
+fields); they apply to loaded titles, not the provider's entire database.
+Missing attributes cannot be inferred and are not invented. Source filters also
+include codec, release format, dynamic range, audio and reported language, with
+an explicit Unknown option. These use source descriptions and supplied metadata.

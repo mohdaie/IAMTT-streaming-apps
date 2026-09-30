@@ -99,6 +99,21 @@ public final class Protocol {
         return b.toString();
     }
 
+    public static List<String> sourceAttributes(JSONObject stream,String key) {
+        List<String> values=new ArrayList<>();String raw=sourceText(stream).toUpperCase(Locale.ROOT);
+        if(key.equals("Codec")){String codec=sourceCodec(stream);values.add(codec.isEmpty()?"Unknown":codec);return values;}
+        String[] terms;
+        switch(key){
+            case "Release format":terms=new String[]{"REMUX","BLURAY","BLU-RAY","WEB-DL","WEBRIP","HDTV","DVDRIP","CAM"};break;
+            case "Dynamic range":terms=new String[]{"HDR10+","HDR10","HDR","DOLBY VISION","DV","SDR"};break;
+            case "Audio":terms=new String[]{"ATMOS","TRUEHD","DTS","EAC3","AC3","AAC","FLAC"};break;
+            default:terms=new String[]{"ENGLISH","MALAY","CHINESE","MANDARIN","CANTONESE","TAMIL","HINDI","JAPANESE","KOREAN","FRENCH","SPANISH","MULTI"};
+        }
+        for(String term:terms)if(Pattern.compile("(?<![A-Z0-9])"+Pattern.quote(term)+"(?![A-Z0-9])").matcher(raw).find())values.add(term);
+        if(key.equals("Language")){JSONArray langs=stream.optJSONArray("languages");if(langs!=null)for(int i=0;i<langs.length();i++)values.add(langs.optString(i));String language=stream.optString("language");if(!language.isEmpty())values.add(language);}
+        if(values.isEmpty())values.add("Unknown");return values;
+    }
+
     public static long sourceSize(JSONObject stream) {
         JSONObject hints=stream.optJSONObject("behaviorHints");
         if(hints!=null) {

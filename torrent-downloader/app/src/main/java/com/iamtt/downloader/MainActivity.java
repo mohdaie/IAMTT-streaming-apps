@@ -25,7 +25,14 @@ public class MainActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
     private final LruCache<String,Bitmap> artwork=new LruCache<>(40);
     private String tab="Discover",query="",mediaType="movie";
-    private boolean sortNewest=true;
+    private List<JSONObject> catalogueChoices=new ArrayList<>();
+    private int catalogueIndex=0,nextSkip=0;
+    private boolean canLoadMore=false;
+    private String serverGenre="",titleSort="Newest";
+    private final Map<String,String> titleFilters=new LinkedHashMap<>();
+    private final Map<String,String> streamFilters=new LinkedHashMap<>();
+    private LinearLayout catalogueArea;
+
     private int yearFilter=0,generation;
     private String exporting;
     private JSONObject activeSeries,activeMedia;
@@ -111,7 +118,7 @@ public class MainActivity extends Activity {
 
     private void brandBar(){
         LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(0,dp(4),0,dp(18));
-        TextView logo=text("IAMTT",24,INK);logo.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));logo.setLetterSpacing(0.08f);
+        ImageView logo=new ImageView(this);logo.setImageResource(com.iamtt.downloader.R.drawable.iamtt_wordmark);logo.setScaleType(ImageView.ScaleType.FIT_START);
         row.addView(logo,new LinearLayout.LayoutParams(0,dp(40),1));
         TextView version=text("v"+BuildConfig.VERSION_NAME,11,MUTED);version.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);row.addView(version,new LinearLayout.LayoutParams(dp(90),dp(40)));
         body.addView(row);
@@ -172,7 +179,7 @@ public class MainActivity extends Activity {
         EditText field=new EditText(this);field.setSingleLine();field.setHint("Search movies, TV shows, or genres…");
         field.setText(query);field.setTextColor(INK);field.setHintTextColor(MUTED);field.setBackground(rounded(CARD2,14));field.setPadding(dp(16),0,dp(16),0);
         body.addView(field,new LinearLayout.LayoutParams(-1,dp(48)));
-        Runnable find=()->{query=field.getText().toString().trim();yearFilter=0;((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(field.getWindowToken(),0);show("Discover");};
+        Runnable find=()->{query=field.getText().toString().trim();yearFilter=0;catalogueIndex=0;serverGenre="";titleFilters.clear();((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(field.getWindowToken(),0);show("Discover");};
         field.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);field.setOnEditorActionListener((v,a,e)->{find.run();return true;});
 
         if(addons.installed().length()==0){
@@ -183,54 +190,101 @@ public class MainActivity extends Activity {
         TextView loading=text(mediaType.equals("series")?"Loading TV shows…":"Loading movies…",14,MUTED);loading.setPadding(0,dp(18),0,0);body.addView(loading);
         final int token=generation;
         io.execute(()->{try{
-            AddonClient.Results result=addons.catalog(mediaType,query);
+            catalogueChoices=addons.catalogs(mediaType,!query.isEmpty());
+            if(catalogueIndex>=catalogueChoices.size())catalogueIndex=0;
+            AddonClient.Results result=catalogueChoices.isEmpty()?new AddonClient.Results():addons.catalog(catalogueChoices.get(catalogueIndex),mediaType,query,0,serverGenre);
             runOnUiThread(()->{
                 if(token!=generation||isDestroyed())return;body.removeView(loading);currentTitles=new ArrayList<>(result.items);
-                for(String e:result.errors)note(e);renderCatalogueControls();renderTitles();
+                nextSkip=result.items.size();canLoadMore=!result.items.isEmpty();
+                catalogueArea=column();body.addView(catalogueArea);renderCatalogueContents();
             });
         }catch(Exception e){runOnUiThread(()->{if(token==generation)loading.setText("Catalogue failed. Check your connection and try again.");});}});
     }
 
     private void switchType(String type){
-        if(mediaType.equals(type))return;mediaType=type;query="";yearFilter=0;activeSeries=null;activeMedia=null;currentTitles.clear();show("Discover");
+        if(mediaType.equals(type))return;mediaType=type;query="";yearFilter=0;catalogueIndex=0;serverGenre="";titleFilters.clear();activeSeries=null;activeMedia=null;currentTitles.clear();show("Discover");
     }
 
-    private void renderCatalogueControls(){
-        if(currentTitles.isEmpty()){note("No titles found. Try a different search or check your catalogue addon.");return;}
-        LinearLayout row=new LinearLayout(this);row.setPadding(0,dp(14),0,dp(8));
-        Button year=button(yearFilter==0?"Year · All":"Year · "+yearFilter,this::chooseYear);
-        Button sort=button(sortNewest?"Sort · Newest":"Sort · Oldest",()->{sortNewest=!sortNewest;renderCatalogueAgain();});
-        row.addView(year,new LinearLayout.LayoutParams(0,dp(46),1));
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(46),1);p.leftMargin=dp(8);row.addView(sort,p);body.addView(row);
-    }
-
-    private void chooseYear(){
-        TreeSet<Integer> years=new TreeSet<>(Collections.reverseOrder());
-        for(JSONObject m:currentTitles){int y=Protocol.year(m);if(y>0)years.add(y);}
-        List<Integer> values=new ArrayList<>();values.add(0);values.addAll(years);
-        String[] labels=new String[values.size()];labels[0]="All years";for(int i=1;i<labels.length;i++)labels[i]=String.valueOf(values.get(i));
-        new AlertDialog.Builder(this).setTitle("Filter by year").setSingleChoiceItems(labels,values.indexOf(yearFilter),(d,which)->{
-            yearFilter=values.get(which);d.dismiss();renderCatalogueAgain();
-        }).setNegativeButton("Cancel",null).show();
-    }
-
-    private void renderCatalogueAgain(){show("Discover");}
-
-    private void renderTitles(){
-        List<JSONObject> list=new ArrayList<>();
-        for(JSONObject m:currentTitles){int y=Protocol.year(m);if(yearFilter==0||yearFilter==y)list.add(m);}
-        list.sort((a,b)->{
-            int ya=Protocol.year(a),yb=Protocol.year(b);int cmp=Integer.compare(yb,ya);
-            if(!sortNewest)cmp=-cmp;if(cmp!=0)return cmp;return a.optString("name").compareToIgnoreCase(b.optString("name"));
+    private void renderCatalogueContents(){
+        catalogueArea.removeAllViews();
+        if(catalogueChoices.isEmpty()){catalogueArea.addView(text("No compatible catalogues. Add a catalogue in Addons.",14,MUTED));return;}
+        JSONObject selected=catalogueChoices.get(catalogueIndex);
+        catalogueArea.addView(button(selected.optString("label")+" ▾",()->{
+            String[] labels=new String[catalogueChoices.size()];for(int i=0;i<labels.length;i++)labels[i]=catalogueChoices.get(i).optString("label");
+            new AlertDialog.Builder(this).setTitle("Browse catalogue").setSingleChoiceItems(labels,catalogueIndex,(d,w)->{
+                catalogueIndex=w;serverGenre="";yearFilter=0;titleFilters.clear();d.dismiss();show("Discover");
+            }).setNegativeButton("Cancel",null).show();
+        }));
+        HorizontalScrollView sc=new HorizontalScrollView(this);LinearLayout chips=new LinearLayout(this);sc.addView(chips);
+        addChip(chips,"Filters · "+(titleFilters.size()+(yearFilter>0?1:0)),this::chooseTitleFilter);
+        addChip(chips,"Sort · "+titleSort,()->pick("Sort",Arrays.asList("Newest","Oldest","Title A–Z","Rating high–low"),titleSort,v->{titleSort=v;renderCatalogueContents();}));
+        if(AddonClient.supports(selected,"genre"))addChip(chips,"Genre · "+(serverGenre.isEmpty()?"All":serverGenre),()->{
+            List<String> values=new ArrayList<>();values.add("All");JSONArray es=selected.optJSONArray("extra");
+            if(es!=null)for(int i=0;i<es.length();i++){JSONObject e=es.optJSONObject(i);if(e!=null&&"genre".equals(e.optString("name"))){JSONArray opts=e.optJSONArray("options");if(opts!=null)for(int j=0;j<opts.length();j++)values.add(opts.optString(j));}}
+            pick("Catalogue genre",values,serverGenre.isEmpty()?"All":serverGenre,v->{serverGenre="All".equals(v)?"":v;titleFilters.clear();show("Discover");});
         });
-        if(list.isEmpty()){note("Nothing matches this year filter.");return;}
-        if(!query.isEmpty()){
-            renderMediaRail("Results",list.subList(0,Math.min(30,list.size())));
-            return;
+        addChip(chips,"Reset",()->{titleFilters.clear();yearFilter=0;serverGenre="";titleSort="Newest";show("Discover");});
+        catalogueArea.addView(sc);catalogueArea.addView(text("Filters apply to loaded titles; load more to expand results.",12,MUTED));
+        List<JSONObject> list=new ArrayList<>();for(JSONObject m:currentTitles){
+            if(yearFilter>0&&Protocol.year(m)!=yearFilter)continue;boolean matches=true;
+            for(Map.Entry<String,String> f:titleFilters.entrySet())if(!attributeValues(m,f.getKey()).contains(f.getValue()))matches=false;
+            if(matches)list.add(m);
         }
-        int cut=Math.min(12,list.size());
-        renderMediaRail(sortNewest?"Latest":"Browse",list.subList(0,cut));
-        if(list.size()>cut)renderMediaRail("More to watch",list.subList(cut,Math.min(cut+24,list.size())));
+        list.sort((a,b)->{
+            if(titleSort.equals("Title A–Z"))return a.optString("name").compareToIgnoreCase(b.optString("name"));
+            if(titleSort.equals("Rating high–low"))return Double.compare(b.optDouble("imdbRating",-1),a.optDouble("imdbRating",-1));
+            int cmp=Integer.compare(Protocol.year(b),Protocol.year(a));return titleSort.equals("Oldest")?-cmp:cmp;
+        });
+        catalogueArea.addView(text(list.size()+" of "+currentTitles.size()+" loaded titles",13,MUTED));
+        LinearLayout grid=column();catalogueArea.addView(grid);
+        for(int i=0;i<list.size();i+=3){LinearLayout row=new LinearLayout(this);grid.addView(row);
+            for(int j=i;j<Math.min(i+3,list.size());j++){
+                JSONObject media=list.get(j);LinearLayout tile=column();LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,-2,1);tp.setMargins(dp(3),dp(8),dp(3),dp(8));row.addView(tile,tp);
+                ImageView poster=posterView(100,150);tile.addView(poster,new LinearLayout.LayoutParams(-1,dp(158)));loadImage(poster,media.optString("poster"),generation);
+                TextView n=text(media.optString("name"),13,INK);n.setMaxLines(2);tile.addView(n);
+                tile.addView(text(Protocol.year(media)+" · ★ "+media.optString("imdbRating","—"),11,MUTED));
+                tile.setOnClickListener(v->{activeMedia=media;if(mediaType.equals("series")){activeSeries=media;episodes(media);}else{activeSeries=null;sources("movie",media.optString("id"),media.optString("name"));}});
+            }
+        }
+        if(list.isEmpty())catalogueArea.addView(text("No titles match. Reset filters or load more.",14,MUTED));
+        if(canLoadMore&&AddonClient.supports(selected,"skip"))catalogueArea.addView(button("Load more titles",this::loadMoreTitles));
+        else catalogueArea.addView(text("End of this catalogue. Choose another catalogue above.",13,MUTED));
+    }
+    private void loadMoreTitles(){
+        int token=generation;JSONObject c=catalogueChoices.get(catalogueIndex);int offset=nextSkip;
+        catalogueArea.getChildAt(catalogueArea.getChildCount()-1).setEnabled(false);
+        io.execute(()->{try{AddonClient.Results r=addons.catalog(c,mediaType,query,offset,serverGenre);main.post(()->{
+            if(token!=generation||isDestroyed())return;
+            Set<String> seen=new HashSet<>();for(JSONObject m:currentTitles)seen.add(m.optString("id"));int added=0;
+            for(JSONObject m:r.items)if(seen.add(m.optString("id"))){currentTitles.add(m);added++;}
+            nextSkip+=r.items.size();canLoadMore=added>0;renderCatalogueContents();
+        });}catch(Exception e){main.post(()->{if(token==generation){renderCatalogueContents();error("Could not load more. Retry after checking your connection.");}});}});
+    }
+    private void addChip(LinearLayout row,String label,Runnable action){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(44));p.setMargins(0,dp(10),dp(8),dp(8));row.addView(button(label,action),p);}
+    private interface Selection{void choose(String value);}
+    private void pick(String label,List<String> values,String selected,Selection action){
+        new AlertDialog.Builder(this).setTitle(label).setSingleChoiceItems(values.toArray(new String[0]),values.indexOf(selected),(d,w)->{d.dismiss();action.choose(values.get(w));}).setNegativeButton("Cancel",null).show();
+    }
+    private List<String> attributeValues(JSONObject media,String key){
+        List<String> values=new ArrayList<>();Object v=media.opt(key);
+        if(v instanceof JSONArray){JSONArray a=(JSONArray)v;for(int i=0;i<a.length();i++){Object x=a.opt(i);if(x instanceof String||x instanceof Number||x instanceof Boolean)values.add(String.valueOf(x));}}
+        else if(v instanceof String||v instanceof Number||v instanceof Boolean){String x=String.valueOf(v);if(!x.isEmpty()&&!x.startsWith("http")&&x.length()<150)values.add(x);}
+        return values;
+    }
+    private void chooseTitleFilter(){
+        TreeSet<String> keys=new TreeSet<>();
+        Set<String> excluded=new HashSet<>(Arrays.asList("id","type","poster","background","logo","description","name","slug","imdb_id","moviedb_id"));
+        for(JSONObject m:currentTitles){Iterator<String> it=m.keys();while(it.hasNext()){String key=it.next();if(!excluded.contains(key)&&!attributeValues(m,key).isEmpty())keys.add(key);}}
+        List<String> fields=new ArrayList<>();fields.add("Year");fields.addAll(keys);
+        pick("Filter by movie attribute",fields,"",field->{
+            TreeSet<String> opts=new TreeSet<>();for(JSONObject m:currentTitles){if(field.equals("Year")){if(Protocol.year(m)>0)opts.add(String.valueOf(Protocol.year(m)));}else opts.addAll(attributeValues(m,field));}
+            List<String> values=new ArrayList<>();values.add("All");values.addAll(opts);
+            pick(field,values,field.equals("Year")?(yearFilter==0?"All":String.valueOf(yearFilter)):titleFilters.getOrDefault(field,"All"),value->{
+                if(field.equals("Year"))yearFilter=value.equals("All")?0:Integer.parseInt(value);
+                else if(value.equals("All"))titleFilters.remove(field);else titleFilters.put(field,value);
+                renderCatalogueContents();
+            });
+        });
     }
 
     private void renderMediaRail(String heading,List<JSONObject> items){
@@ -303,7 +357,7 @@ public class MainActivity extends Activity {
 
     private void sources(String type,String id,String displayTitle){
         generation++;tab="Sources";int token=generation;body.removeAllViews();refreshNav();
-        sourceQuality="All";sourcePublisher="All";sourceSize="All";sourceSeeders="All";sourceSort="Best peers";currentStreams.clear();
+        sourceQuality="All";sourcePublisher="All";sourceSize="All";sourceSeeders="All";sourceSort="Best peers";streamFilters.clear();currentStreams.clear();
         body.addView(button(type.equals("series")?"‹ Back to episodes":"‹ Back to movies",()->{if(type.equals("series")&&activeSeries!=null)episodes(activeSeries);else show("Discover");}));
         if(activeMedia!=null){
             LinearLayout hero=column();hero.setPadding(0,dp(12),0,dp(10));
@@ -339,13 +393,24 @@ public class MainActivity extends Activity {
         Button seedFilter=button("Seeders · "+sourceSeeders,()->chooseSourceSeeders(type,displayTitle));
         Button sort=button("Sort · "+sourceSort,()->chooseSourceSort(type,displayTitle));
         for(Button b:new Button[]{q,p,s,seedFilter,sort}){LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,dp(42));cp.rightMargin=dp(8);chips.addView(b,cp);}
-        sourceArea.addView(filters,new LinearLayout.LayoutParams(-1,dp(50)));
+        addChip(chips,"More filters · "+streamFilters.size(),()->{
+            List<String> fields=new ArrayList<>(Arrays.asList("Codec","Release format","Dynamic range","Audio","Language"));
+            pick("Source attributes",fields,"",key->{
+                TreeSet<String> set=new TreeSet<>();for(JSONObject stream:currentStreams)set.addAll(Protocol.sourceAttributes(stream,key));
+                List<String> values=new ArrayList<>();values.add("All");values.addAll(set);
+                pick(key,values,streamFilters.getOrDefault(key,"All"),value->{if(value.equals("All"))streamFilters.remove(key);else streamFilters.put(key,value);renderSourceArea(type,displayTitle);});
+            });
+        });
+        addChip(chips,"Reset",()->{sourceQuality="All";sourcePublisher="All";sourceSize="All";sourceSeeders="All";streamFilters.clear();renderSourceArea(type,displayTitle);});
+        sourceArea.addView(filters,new LinearLayout.LayoutParams(-1,dp(64)));
 
         List<JSONObject> list=new ArrayList<>();
         for(JSONObject stream:currentStreams){
             if(!"All".equals(sourceQuality)&&!sourceQuality.equals(Protocol.sourceQuality(stream)))continue;
             if(!"All".equals(sourcePublisher)&&!sourcePublisher.equals(Protocol.sourcePublisher(stream)))continue;
             if(!sourceSizeMatches(stream)||!sourceSeederMatches(stream))continue;
+            boolean matches=true;for(Map.Entry<String,String> f:streamFilters.entrySet())if(!Protocol.sourceAttributes(stream,f.getKey()).contains(f.getValue()))matches=false;
+            if(!matches)continue;
             list.add(stream);
         }
         list.sort((a,b)->{
@@ -410,7 +475,7 @@ public class MainActivity extends Activity {
         top.addView(text(bytes>0?size(bytes):"Unknown size",13,MUTED));c.addView(top);
         c.addView(text(publisher+" · "+(seeds>=0?seeds+" seeders":"seeders not reported")+" · "+health,12,seeds==0?0xFFFF9F0A:MUTED));
         String raw=stream.optString("description",stream.optString("title",""));
-        if(!raw.isEmpty()){TextView d=text(raw,12,MUTED);d.setMaxLines(2);d.setEllipsize(android.text.TextUtils.TruncateAt.END);c.addView(d);}
+        if(!raw.isEmpty()){TextView d=text(raw,12,MUTED);c.addView(d);}
         boolean torrent=stream.optString("infoHash").matches("(?i)[0-9a-f]{40}");
         if(torrent){Button dl=button(seeds==0?"Try anyway":"Download",()->enqueue(stream,displayTitle));dl.setBackground(rounded(BLUE,14));c.addView(dl,new LinearLayout.LayoutParams(-1,dp(44)));}
         else c.addView(text("Direct/debrid streams are not handled by this downloader build.",13,MUTED));

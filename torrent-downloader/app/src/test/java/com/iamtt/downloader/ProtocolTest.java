@@ -5,6 +5,15 @@ import org.json.*;
 import java.io.*;
 
 public class ProtocolTest {
+    @Test public void sourceFacetsRespectTokenBoundariesAndUnknowns() throws Exception {
+        JSONObject s=new JSONObject().put("title","Film WEB-DL HDR10+ AAC ENGLISH");
+        assertTrue(Protocol.sourceAttributes(s,"Release format").contains("WEB-DL"));
+        assertTrue(Protocol.sourceAttributes(s,"Dynamic range").contains("HDR10+"));
+        assertTrue(Protocol.sourceAttributes(s,"Audio").contains("AAC"));
+        assertTrue(Protocol.sourceAttributes(s,"Language").contains("ENGLISH"));
+        assertEquals("Unknown",Protocol.sourceAttributes(new JSONObject().put("title","CAMERON"),"Release format").get(0));
+    }
+
     @Test public void preservesConfiguredAddonPath() {
         assertEquals("https://example.org/quality=1080p%7Ckey=abc",Protocol.base("stremio://example.org/quality=1080p%7Ckey=abc/manifest.json"));
     }
