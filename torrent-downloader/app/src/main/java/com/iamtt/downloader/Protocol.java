@@ -72,6 +72,14 @@ public final class Protocol {
         JSONArray required = catalog.optJSONArray("extraRequired");
         return required == null || required.length() == 0;
     }
+    public static List<String> magnetTrackers(String magnet){
+        Set<String> trackers=new LinkedHashSet<>();int query=magnet.indexOf('?');if(query<0)return new ArrayList<>();
+        for(String part:magnet.substring(query+1).split("&"))if(part.startsWith("tr="))try{
+            String url=java.net.URLDecoder.decode(part.substring(3),"UTF-8");URI uri=URI.create(url);
+            String scheme=uri.getScheme();if(uri.getHost()!=null&&uri.getUserInfo()==null&&("udp".equalsIgnoreCase(scheme)||"https".equalsIgnoreCase(scheme)||"http".equalsIgnoreCase(scheme)))trackers.add(url);
+        }catch(Exception ignored){}
+        return new ArrayList<>(trackers);
+    }
     public static String magnet(JSONObject stream, String title) {
         String hash = stream.optString("infoHash").toLowerCase(Locale.ROOT);
         if (!hash.matches("[0-9a-f]{40}")) throw new IllegalArgumentException("This source has no supported torrent hash.");

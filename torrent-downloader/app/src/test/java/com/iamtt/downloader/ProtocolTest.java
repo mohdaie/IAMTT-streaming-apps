@@ -5,6 +5,10 @@ import org.json.*;
 import java.io.*;
 
 public class ProtocolTest {
+    @Test public void trackerHintsSurviveEncodedMagnetAndRejectInvalidUrls(){
+        assertEquals(java.util.Arrays.asList("https://example.org/announce?key=a&b=c","udp://example.org:6969/announce"),Protocol.magnetTrackers("magnet:?xt=urn:btih:abc&tr=https%3A%2F%2Fexample.org%2Fannounce%3Fkey%3Da%26b%3Dc&tr=udp%3A%2F%2Fexample.org%3A6969%2Fannounce&tr=file%3A%2F%2F%2Fetc%2Fpasswd"));
+    }
+
     @Test public void sourceFacetsRespectTokenBoundariesAndUnknowns() throws Exception {
         JSONObject s=new JSONObject().put("title","Film WEB-DL HDR10+ AAC ENGLISH");
         assertTrue(Protocol.sourceAttributes(s,"Release format").contains("WEB-DL"));

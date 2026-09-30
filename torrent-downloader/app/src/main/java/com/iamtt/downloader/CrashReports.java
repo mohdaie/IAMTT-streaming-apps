@@ -26,6 +26,12 @@ public final class CrashReports extends Application {
             .replaceAll("(?i)magnet:[^\\s]+","[magnet removed]")
             .replaceAll("(?i)\\b[0-9a-f]{40}\\b","[hash removed]");
     }
+    public static void checkpoint(Context context,String stage){
+        if(Build.VERSION.SDK_INT>=30)try{
+            byte[] bytes=("v"+BuildConfig.VERSION_NAME+" · "+stage).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            context.getSystemService(ActivityManager.class).setProcessStateSummary(Arrays.copyOf(bytes,Math.min(bytes.length,128)));
+        }catch(Exception ignored){}
+    }
     public static String report(Context context){
         StringBuilder out=new StringBuilder("IAMTT v"+BuildConfig.VERSION_NAME+"\nAndroid "+Build.VERSION.RELEASE+" (API "+Build.VERSION.SDK_INT+")\n");
         String javaReport=context.getSharedPreferences("crash_report",MODE_PRIVATE).getString("java","");
@@ -38,6 +44,7 @@ public final class CrashReports extends Application {
                         .append(reason(e.getReason())).append(" · status ").append(e.getStatus()).append("\n")
                         .append(redact(String.valueOf(e.getDescription()))).append("\n")
                         .append("Memory at exit: ").append(e.getPss()).append(" KB PSS\n");
+                    byte[] checkpoint=e.getProcessStateSummary();if(checkpoint!=null)out.append("Last transfer step: ").append(new String(checkpoint,java.nio.charset.StandardCharsets.UTF_8)).append("\n");
                     if(e.getReason()==ApplicationExitInfo.REASON_ANR){
                         try(InputStream trace=e.getTraceInputStream()){
                             if(trace!=null){byte[] bytes=new byte[32768];int count=0,n;while(count<bytes.length&&(n=trace.read(bytes,count,bytes.length-count))>0)count+=n;out.append(redact(new String(bytes,0,count,java.nio.charset.StandardCharsets.UTF_8))).append("\n");}
