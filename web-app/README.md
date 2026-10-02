@@ -27,7 +27,7 @@ Google's browser token model needs reconnection after access tokens expire and a
 
 ## Browser limits
 
-MP4/H.264/AAC is the most compatible combination. MKV, AVI, HEVC, DTS/AC3 and other combinations may fail depending on the browser/device. There is **no transcoding server**. Native browser players determine support for embedded audio/subtitle tracks. Online OpenSubtitles retrieval, Android profile-photo imports and cross-device/Android history sync are not included in this first web version. ASS subtitle text is converted to WebVTT; advanced ASS styling/animation is not preserved.
+MP4/H.264/AAC is the most compatible combination. IAMTT Web 0.1.2 decodes Dolby Digital Plus (E-AC-3) and AC-3 audio from MKV files locally using a bundled WebAssembly decoder. Chrome plays the original video while Web Audio plays the decoded soundtrack. Audio follows pause, mute, volume, seek and playback speed. Only a few seconds of audio are buffered; the app reads private Drive byte ranges through its existing per-tab service worker. No conversion server, uploaded copy, or file changes are required. Video formats still depend on your browser/device: HEVC/10-bit needs compatible hardware; DTS, TrueHD, AVI and other combinations may still fail. The player shows a Restore sound button if audio needs restarting. Native browser support still determines embedded subtitle playback. Online OpenSubtitles retrieval, Android profile-photo imports and cross-device/Android history sync are not included in this first web version. ASS subtitle text is converted to WebVTT; advanced ASS styling/animation is not preserved.
 
 Profiles, folder selections, metadata and viewing progress use **this browser's** storage, not shared/cloud storage. Google passwords, service-account private keys and OAuth client secrets are never requested. Video playback/Drive folders require real Google authorization; no sample media is passed off as a connected library.
 
@@ -51,4 +51,5 @@ One-time repository setting: **Settings → Pages → Build and deployment → S
 
 For Google OAuth, authorize **https://mohdaie.github.io** (the origin only, without the repository path), then paste the Web client ID into IAMTT Settings. The HTML, CSS and JavaScript are public on GitHub Pages; each visitor still needs their own Google Drive grant, and tokens/media are not published in the repository.
 
-Tests exercise filename parsing, catalogue grouping, subtitle conversion, Drive byte-range forwarding and per-tab token isolation. Browser/device playback and real Google OAuth must be checked with the user's account after client setup.
+Tests also decode a real generated Dolby 5.1 MKV fixture, verify centre-channel dialogue, cue-based streaming seeks, lacing, bounded reads, pause/mute/rate changes and decoder cleanup. Browser/device playback and real Google OAuth must be checked with the user's account after client setup.
+
