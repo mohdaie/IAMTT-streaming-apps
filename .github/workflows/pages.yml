@@ -1,0 +1,47 @@
+name: Deploy IAMTT Web to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['web-app/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: iamtt-github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check IAMTT Web
+        working-directory: web-app
+        run: |
+          npm test
+          npm run check
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload web app
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy IAMTT Web
+        id: deployment
+        uses: actions/deploy-pages@v4
