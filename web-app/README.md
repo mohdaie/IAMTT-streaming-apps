@@ -43,6 +43,12 @@ npm run check
 python3 -m http.server 8080 --directory dist
 ```
 
-Static asset paths assume hosting at the **origin root**; deploy on a root domain or a dedicated subdomain. A GitHub Pages project subpath requires changing the asset, service-worker, manifest and media paths. The deployed Site uses a separate source repository managed by Sites; `web-app/` in the original repository provides a reviewable copy.
+Static assets, the manifest, the service worker and private-media routes adapt to the hosting path, including GitHub Pages project paths. The GitHub Pages workflow deploys only `web-app/dist/` after tests pass.
+
+GitHub Pages URL: https://mohdaie.github.io/IAMTT-streaming-apps/
+
+One-time repository setting: **Settings → Pages → Build and deployment → Source → GitHub Actions**. If Pages was not enabled when the workflow ran, rerun **Deploy IAMTT Web to GitHub Pages** after selecting this source.
+
+For Google OAuth, authorize **https://mohdaie.github.io** (the origin only, without the repository path), then paste the Web client ID into IAMTT Settings. The HTML, CSS and JavaScript are public on GitHub Pages; each visitor still needs their own Google Drive grant, and tokens/media are not published in the repository.
 
 Tests exercise filename parsing, catalogue grouping, subtitle conversion, Drive byte-range forwarding and per-tab token isolation. Browser/device playback and real Google OAuth must be checked with the user's account after client setup.
