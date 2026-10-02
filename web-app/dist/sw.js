@@ -1,7 +1,7 @@
 /* Tokens are per-tab and memory-only. Never cache Drive responses or credentials. */
 const BASE=new URL('./',self.location.href).pathname,MEDIA_PATH=BASE+'drive-media/';
-const CACHE_PREFIX='iamtt-shell-'+encodeURIComponent(BASE)+'-',CACHE=CACHE_PREFIX+'v2';
-const SHELL=['','index.html','styles.css','app.js','media.mjs','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png'].map(file=>BASE+file);
+const CACHE_PREFIX='iamtt-shell-'+encodeURIComponent(BASE)+'-',CACHE=CACHE_PREFIX+'v3';
+const SHELL=['','index.html','styles.css','app.js','media.mjs','mkv-audio.mjs','compat-audio.mjs','vendor/eac3/decode-eac3.mjs','vendor/eac3/src/eac3.wasm.js','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png'].map(file=>BASE+file);
 const sessions=new Map();const waits=new Map();
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith(CACHE_PREFIX)&&k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()])));
@@ -14,3 +14,4 @@ async function stream(e,url){const id=decodeURIComponent(url.pathname.slice(MEDI
  if(upstream.status===206&&!h.has('Content-Range')&&range&&Number(file.size)>0){const m=/^bytes=(\d*)-(\d*)$/.exec(range);if(m){const size=Number(file.size);const start=m[1]?Number(m[1]):Math.max(0,size-Number(m[2]));const end=m[1]&&m[2]?Math.min(Number(m[2]),size-1):size-1;h.set('Content-Range',`bytes ${start}-${end}/${size}`);if(!h.has('Content-Length'))h.set('Content-Length',String(end-start+1))}}
  return new Response(upstream.body,{status:upstream.status,headers:h});}catch{return new Response('Drive is unreachable',{status:502})}}
 self.addEventListener('fetch',e=>{const url=new URL(e.request.url);if(url.origin!==self.location.origin)return;if(url.pathname.startsWith(MEDIA_PATH)){e.respondWith(stream(e,url));return}if(e.request.method!=='GET'||!SHELL.includes(url.pathname))return;e.respondWith(fetch(e.request).then(r=>{if(r.ok&&r.headers.get('Content-Type')?.includes(url.pathname.endsWith('.js')||url.pathname.endsWith('.mjs')?'javascript':url.pathname.endsWith('.css')?'text/css':url.pathname===BASE||url.pathname.endsWith('.html')?'text/html':url.pathname.endsWith('.png')?'image/png':url.pathname.endsWith('.svg')?'image/svg+xml':'json')){const copy=r.clone();e.waitUntil(caches.open(CACHE).then(c=>c.put(e.request,copy)))}return r}).catch(()=>caches.match(e.request).then(r=>r||Response.error())))});
+
