@@ -1,6 +1,6 @@
 /* Tokens are per-tab and memory-only. Never cache Drive responses or credentials. */
 const BASE=new URL('./',self.location.href).pathname,MEDIA_PATH=BASE+'drive-media/';
-const CACHE_PREFIX='iamtt-shell-'+encodeURIComponent(BASE)+'-',CACHE=CACHE_PREFIX+'v3';
+const CACHE_PREFIX='iamtt-shell-'+encodeURIComponent(BASE)+'-',CACHE=CACHE_PREFIX+'v4';
 const SHELL=['','index.html','styles.css','app.js','media.mjs','mkv-audio.mjs','compat-audio.mjs','vendor/eac3/decode-eac3.mjs','vendor/eac3/src/eac3.wasm.js','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png'].map(file=>BASE+file);
 const sessions=new Map();const waits=new Map();
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
