@@ -14,7 +14,7 @@ function uint(b){let n=0;for(const x of b)n=n*256+x;return n}
 function elements(b){const out=[];let p=0;while(p<b.length){const id=vint(b,p,true);p+=id.length;const size=vint(b,p);p+=size.length;if(!Number.isFinite(size.value)||p+size.value>b.length)throw new Error('Truncated Matroska metadata');out.push({id:id.value,data:b.subarray(p,p+size.value)});p+=size.value}return out}
 function text(b){return new TextDecoder().decode(b)}
 export class ByteSource{
- constructor({url,blob,size,fetcher=fetch,signal}){this.url=url;this.blob=blob;this.size=blob?.size||Number(size);this.fetcher=fetcher;this.signal=signal;this.cache=null;if(!Number.isSafeInteger(this.size)||this.size<=0)throw new Error('Missing video file size')}
+ constructor({url,blob,size,fetcher=(input,init)=>fetch(input,init),signal}){this.url=url;this.blob=blob;this.size=blob?.size||Number(size);this.fetcher=fetcher;this.signal=signal;this.cache=null;if(!Number.isSafeInteger(this.size)||this.size<=0)throw new Error('Missing video file size')}
  async read(offset,length,small=false){
   this.signal?.throwIfAborted();if(offset<0||length<0||offset+length>this.size)throw new Error('Truncated Matroska file');
   if(this.cache&&offset>=this.cache.start&&offset+length<=this.cache.start+this.cache.bytes.length)return this.cache.bytes.subarray(offset-this.cache.start,offset-this.cache.start+length);

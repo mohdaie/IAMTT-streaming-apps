@@ -44,3 +44,9 @@ test('compatible sound schedules all six channels, respects mute and clears soun
  v.paused=false;v.currentTime=2;v.muted=false;v.playbackRate=1.5;v.dispatchEvent(new Event('seeked'));for(let i=0;i<20&&!audio.sources.size;i++)await new Promise(r=>setTimeout(r,5));assert.ok(audio.sources.size);assert.equal([...audio.sources][0].playbackRate.value,1.5);
  v.dispatchEvent(new Event('seeking'));assert.equal(audio.sources.size,0);audio.dispose();assert.equal(audio.hub.native.gain.value,1);assert.equal(audio.sources.size,0);assert.ok(statuses.includes('Dolby audio active'));delete globalThis.AudioContext;
 });
+test('default fetcher keeps the window receiver so Safari can start Drive audio',async()=>{
+ const original=globalThis.fetch;let calls=0;
+ // Safari rejects fetch called as a method of another object: "Can only call Window.fetch on instances of Window".
+ globalThis.fetch=function(url,init){if(this!==undefined&&this!==globalThis)throw new TypeError('Can only call Window.fetch on instances of Window');calls++;const [,a,b]=/^bytes=(\d+)-(\d+)$/.exec(init.headers.Range);return Promise.resolve(new Response(fixture.subarray(Number(a),Number(b)+1),{status:206,headers:{'Content-Range':`bytes ${a}-${b}/${fixture.length}`}}))};
+ try{const reader=new MkvAudio(new ByteSource({url:'/drive-media/x',size:fixture.length}));assert.equal(await reader.init(),true);assert.ok(calls>0)}finally{globalThis.fetch=original}
+});
